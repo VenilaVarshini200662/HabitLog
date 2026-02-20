@@ -1,0 +1,511 @@
+<!-- public/chatbot.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Assistant - HabitLog</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Page Transitions -->
+    <script src="/js/page-transitions.js"></script>
+    <script src="/js/translations.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: { 50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81' },
+                        accent: { 50: '#f0fdfa', 100: '#ccfbf1', 200: '#99f6e4', 300: '#5eead4', 400: '#2dd4bf', 500: '#14b8a6', 600: '#0d9488', 700: '#0f766e', 800: '#115e59', 900: '#134e4a' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+         /* Navigation link styles */
+        .nav-link {
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 2px;
+            background: linear-gradient(to right, #6366f1, #14b8a6);
+            transition: width 0.3s ease;
+        }
+        
+        .nav-link:hover::after {
+            width: 80%;
+        }
+        
+        .nav-link.active {
+            color: #4f46e5;
+        }
+        
+        .dark .nav-link.active {
+            color: #818cf8;
+        }
+        
+        .nav-link.active::after {
+            width: 80%;
+        }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; transition: background-color 0.3s, color 0.3s; }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .dark .glass-effect {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .chat-message {
+            animation: messagePop 0.3s ease-out;
+        }
+
+        @keyframes messagePop {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            column-gap: 6px;
+        }
+        .typing-indicator span {
+            height: 8px;
+            width: 8px;
+            background: #3B82F6;
+            border-radius: 50%;
+            display: inline-block;
+            opacity: 0.4;
+        }
+        .typing-indicator span:nth-child(1) {
+            animation: typing 1s infinite ease-in-out;
+        }
+        .typing-indicator span:nth-child(2) {
+            animation: typing 1s infinite ease-in-out 0.2s;
+        }
+        .typing-indicator span:nth-child(3) {
+            animation: typing 1s infinite ease-in-out 0.4s;
+        }
+        @keyframes typing {
+            0% { transform: translateY(0px); opacity: 0.4; }
+            50% { transform: translateY(-10px); opacity: 1; }
+            100% { transform: translateY(0px); opacity: 0.4; }
+        }
+        .error-toast {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900">
+    <!-- Error Toast -->
+    <div id="errorToast" class="fixed top-4 right-4 z-50 hidden">
+        <div class="bg-red-500 text-white px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3 error-toast">
+            <i class="fas fa-exclamation-circle text-xl"></i>
+            <span id="errorMessage">Error occurred</span>
+            <button onclick="hideErrorToast()" class="ml-4 hover:text-red-100">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="fixed w-full z-40 glass-effect">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center">
+                    <img src="habitlog.png" alt="HabitLog" class="h-12 w-auto mr-0">
+                    <span class="text-2xl font-bold bg-gradient-to-r from-primary-600 to-accent-500 bg-clip-text text-transparent">
+                        HabitLog
+                    </span>
+                </div>
+                <div class="flex items-center space-x-2 md:space-x-4">
+                    <!-- Dashboard Link -->
+                    <a href="/dashboard" class="nav-link px-3 py-2 text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Dashboard</a>
+                    
+                    <!-- Calendar Link -->
+                    <a href="/calendar" class="nav-link px-3 py-2 text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Calendar</a>
+                    
+                    <!-- Stats Link with Icon -->
+                    <a href="/stats" class="nav-link px-3 py-2 text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                        <i class="fas fa-chart-pie"></i> Stats
+                    </a>
+                    
+                    <!-- Progress Link -->
+                    <a href="/progress" class="nav-link px-3 py-2 text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Progress</a>
+
+                    <a href="/mood-tracker" class="nav-link px-3 py-2 text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                        <i class="fas fa-smile mr-1"></i> Mood Tracker
+                    </a>
+                    
+                    <!-- Chatbot Link -->
+                    <a href="/chatbot" class="nav-link px-3 py-2 text-primary-600 dark:text-primary-400 border-b-2 border-primary-600 dark:border-primary-400">
+                        <i class="fas fa-robot mr-1"></i> AI Assistant
+                    </a>
+                    
+                    <!-- Settings Link -->
+                    <a href="/settings" class="nav-link px-3 py-2 text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Settings</a>
+                    
+                    <!-- Theme Toggle Button -->
+                    <button id="themeToggle" class="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                        <i class="fas fa-moon dark:hidden text-gray-700"></i>
+                        <i class="fas fa-sun hidden dark:block text-yellow-400"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="pt-20 pb-12 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto">
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">AI Habit Assistant</h1>
+            <p class="text-gray-600 dark:text-gray-400">Ask me anything about your habits, streaks, or get personalized advice!</p>
+        </div>
+
+        <!-- Chat Container -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden">
+            <!-- Chat Messages -->
+            <div id="chatMessages" class="h-96 overflow-y-auto p-4 space-y-4">
+                <!-- Welcome Message will be inserted by JavaScript -->
+            </div>
+
+            <!-- Typing Indicator (hidden by default) -->
+            <div id="typingIndicator" class="px-4 pb-2 hidden">
+                <div class="flex items-center space-x-2">
+                    <div class="typing-indicator">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                    <span class="text-sm text-gray-500 dark:text-gray-400">AI is thinking...</span>
+                </div>
+            </div>
+
+            <!-- Chat Input -->
+            <div class="border-t border-gray-200 dark:border-gray-700 p-4">
+                <form id="chatForm" class="flex space-x-2">
+                    <input type="text" id="chatInput" 
+                           class="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white transition-all"
+                           placeholder="Type your message here...">
+                    <button type="submit" id="sendButton"
+                            class="px-4 py-2 bg-gradient-to-r from-primary-600 to-accent-500 text-white rounded-lg hover:shadow-lg transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </form>
+                
+                <!-- Quick Questions -->
+                <div class="mt-4 flex flex-wrap gap-2">
+                    <button onclick="askQuestion('streak')" 
+                            class="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                        📊 My Streak
+                    </button>
+                    <button onclick="askQuestion('health')" 
+                            class="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                        💪 Health Tips
+                    </button>
+                    <button onclick="askQuestion('habits')" 
+                            class="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                        🌱 Build Habits
+                    </button>
+                    <button onclick="askQuestion('status')" 
+                            class="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                        ⭐ My Status
+                    </button>
+                    <button onclick="askQuestion('motivation')" 
+                            class="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                        🔥 Motivation
+                    </button>
+                    <button onclick="askQuestion('tips')" 
+                            class="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                        💡 Tips
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Motivational Quote -->
+        <div class="mt-8 text-center animate-pulse">
+            <p class="text-gray-600 dark:text-gray-400 italic" id="motivationalQuote">
+                "The secret of getting ahead is getting started." – Mark Twain
+            </p>
+        </div>
+    </main>
+
+    <script>
+        // Theme Toggle
+        const themeToggle = document.getElementById('themeToggle');
+        const html = document.documentElement;
+        
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark') html.classList.add('dark');
+        else if (savedTheme === 'light') html.classList.remove('dark');
+
+        themeToggle.addEventListener('click', () => {
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+        });
+
+        // Error handling
+        function showError(message) {
+            const errorToast = document.getElementById('errorToast');
+            document.getElementById('errorMessage').textContent = message;
+            errorToast.classList.remove('hidden');
+            setTimeout(() => errorToast.classList.add('hidden'), 5000);
+        }
+
+        function hideErrorToast() {
+            document.getElementById('errorToast').classList.add('hidden');
+        }
+
+        // Motivational quotes array
+        const quotes = [
+            "The secret of getting ahead is getting started. – Mark Twain",
+            "Small daily improvements are the key to staggering long-term results. – Unknown",
+            "Success is the sum of small efforts, repeated day in and day out. – Robert Collier",
+            "It's not about perfect. It's about effort. – Jillian Michaels",
+            "Make your habits so easy you can't say no. – James Clear",
+            "You'll never change your life until you change something you do daily. – John C. Maxwell",
+            "Motivation is what gets you started. Habit is what keeps you going. – Jim Rohn"
+        ];
+
+        // Rotate motivational quote
+        setInterval(() => {
+            const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
+            document.getElementById('motivationalQuote').textContent = `"${randomQuote}"`;
+        }, 10000);
+
+        // Chat functionality
+        const chatMessages = document.getElementById('chatMessages');
+        const chatForm = document.getElementById('chatForm');
+        const chatInput = document.getElementById('chatInput');
+        const typingIndicator = document.getElementById('typingIndicator');
+        const sendButton = document.getElementById('sendButton');
+
+        // Load user data for personalized welcome
+        let userData = null;
+        
+        async function loadUserData() {
+            try {
+                const response = await fetch('/api/user');
+                if (response.ok) {
+                    userData = await response.json();
+                    
+                    // Show personalized welcome message
+                    const welcomeMessage = getWelcomeMessage(userData);
+                    addMessage(welcomeMessage, false);
+                } else {
+                    // If not authenticated, redirect to login
+                    window.location.href = '/';
+                }
+            } catch (error) {
+                console.error('Error loading user data:', error);
+                // Default welcome message
+                addMessage("Hello! I'm your AI assistant. How can I help you today?", false);
+            }
+        }
+
+        function getWelcomeMessage(user) {
+            const category = getCategoryFromAge(user.age);
+            return `Hello ${user.username}! 👋 I'm your AI assistant. You're in the ${category} category. Ask me about your habits, streaks, or get personalized health tips!`;
+        }
+
+        function getCategoryFromAge(age) {
+            if (age < 13) return 'child';
+            else if (age >= 13 && age < 20) return 'teen';
+            else if (age >= 20 && age < 60) return 'adult';
+            else return 'senior';
+        }
+
+        function addMessage(message, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `flex items-start space-x-3 ${isUser ? 'justify-end' : ''} chat-message`;
+            
+            if (!isUser) {
+                messageDiv.innerHTML = `
+                    <div class="w-8 h-8 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-robot text-primary-600"></i>
+                    </div>
+                    <div class="bg-gray-100 dark:bg-gray-700 rounded-lg p-3 max-w-[80%]">
+                        <p class="text-gray-800 dark:text-gray-200 whitespace-pre-line">${escapeHtml(message)}</p>
+                    </div>
+                `;
+            } else {
+                messageDiv.innerHTML = `
+                    <div class="bg-primary-100 dark:bg-primary-900 rounded-lg p-3 max-w-[80%] ml-auto">
+                        <p class="text-gray-800 dark:text-gray-200">${escapeHtml(message)}</p>
+                    </div>
+                    <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-user text-white"></i>
+                    </div>
+                `;
+            }
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Escape HTML to prevent XSS
+        function escapeHtml(unsafe) {
+            if (!unsafe) return unsafe;
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        async function sendMessage(message) {
+            if (!message || !message.trim()) return;
+            
+            // Add user message
+            addMessage(message, true);
+            chatInput.value = '';
+            
+            // Disable input while processing
+            chatInput.disabled = true;
+            sendButton.disabled = true;
+            
+            // Show typing indicator
+            typingIndicator.classList.remove('hidden');
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            try {
+                const response = await fetch('/api/chatbot/ask', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+                
+                // Hide typing indicator
+                typingIndicator.classList.add('hidden');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    addMessage(data.response);
+                } else {
+                    const errorData = await response.json().catch(() => ({}));
+                    if (response.status === 401) {
+                        // Not authenticated - redirect to login
+                        window.location.href = '/';
+                    } else {
+                        addMessage("I'm having trouble responding right now. Please try again later.");
+                        showError(errorData.error || 'Failed to get response');
+                    }
+                }
+            } catch (error) {
+                typingIndicator.classList.add('hidden');
+                addMessage("Sorry, I couldn't connect to the server. Please check your connection and try again.");
+                showError('Network error. Please check your connection.');
+                console.error('Chat error:', error);
+            } finally {
+                // Re-enable input
+                chatInput.disabled = false;
+                sendButton.disabled = false;
+                chatInput.focus();
+            }
+        }
+
+        // Handle form submission
+        chatForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            sendMessage(chatInput.value);
+        });
+
+        // Quick questions - Simplified to English only
+        window.askQuestion = function(topic) {
+            let question = '';
+            
+            switch(topic) {
+                case 'streak':
+                    question = 'What is my streak?';
+                    break;
+                case 'health':
+                    question = 'Tell me about health tips';
+                    break;
+                case 'habits':
+                    question = 'How to build good habits?';
+                    break;
+                case 'status':
+                    question = 'What is my current status?';
+                    break;
+                case 'motivation':
+                    question = 'Give me some motivation';
+                    break;
+                case 'tips':
+                    question = 'Give me some tips for building habits';
+                    break;
+                default:
+                    question = topic;
+            }
+            
+            sendMessage(question);
+        };
+
+        // Allow Enter key to send (but Shift+Enter for new line)
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage(chatInput.value);
+            }
+        });
+
+        // Add logout button
+        function addLogoutButton() {
+            const nav = document.querySelector('.flex.items-center.space-x-2.md\\:space-x-4');
+            if (!nav) return;
+            
+            // Check if logout button already exists
+            if (document.getElementById('logout-btn')) return;
+            
+            const logoutBtn = document.createElement('button');
+            logoutBtn.id = 'logout-btn';
+            logoutBtn.onclick = logout;
+            logoutBtn.className = 'px-3 py-2 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition-colors';
+            logoutBtn.title = 'Logout';
+            logoutBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i>';
+            nav.appendChild(logoutBtn);
+        }
+
+        // Logout function
+        window.logout = async function() {
+            try {
+                await fetch('/api/auth/logout', { method: 'POST' });
+                localStorage.removeItem('user');
+                window.location.href = '/';
+            } catch (error) {
+                console.error('Error logging out:', error);
+            }
+        };
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadUserData();
+            addLogoutButton();
+        });
+    </script>
+</body>
+</html>

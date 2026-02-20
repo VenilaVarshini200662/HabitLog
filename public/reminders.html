@@ -1,0 +1,543 @@
+<!-- public/reminders.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Set Custom Reminders - HabitLog</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/js/translations.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: { 50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81' },
+                        accent: { 50: '#f0fdfa', 100: '#ccfbf1', 200: '#99f6e4', 300: '#5eead4', 400: '#2dd4bf', 500: '#14b8a6', 600: '#0d9488', 700: '#0f766e', 800: '#115e59', 900: '#134e4a' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; transition: background-color 0.3s, color 0.3s; }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .dark .glass-effect {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .reminder-card {
+            transition: all 0.3s ease;
+        }
+        .reminder-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1);
+        }
+        .error-toast {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .time-input {
+            color-scheme: light;
+        }
+        .back-button {
+            transition: all 0.2s ease;
+        }
+        .back-button:hover {
+            transform: translateX(-3px);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+    <!-- Error Toast -->
+    <div id="errorToast" class="fixed top-4 right-4 z-50 hidden">
+        <div class="bg-red-500 text-white px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3 error-toast">
+            <i class="fas fa-exclamation-circle text-xl"></i>
+            <span id="errorMessage">Error occurred</span>
+            <button onclick="hideErrorToast()" class="ml-4 hover:text-red-100">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Success Toast -->
+    <div id="successToast" class="fixed top-4 right-4 z-50 hidden">
+        <div class="bg-green-500 text-white px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3 error-toast">
+            <i class="fas fa-check-circle text-xl"></i>
+            <span id="successMessage">Success!</span>
+            <button onclick="hideSuccessToast()" class="ml-4 hover:text-green-100">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 flex flex-col items-center">
+            <div class="w-16 h-16 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin mb-4"></div>
+            <p class="text-gray-700 dark:text-gray-300">Loading...</p>
+        </div>
+    </div>
+
+    <!-- Simple Header with Back Button -->
+    <div class="fixed top-0 left-0 right-0 z-40 glass-effect">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center space-x-4">
+                    <button onclick="goBack()" class="back-button flex items-center space-x-2 text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                        <i class="fas fa-arrow-left text-xl"></i>
+                        <span class="font-medium">Back to Dashboard</span>
+                    </button>
+                </div>
+
+               <div class="flex items-center">
+                    <img src="habitlog.png" alt="HabitLog" class="h-12 w-auto">
+                    <span class="text-2xl font-bold bg-gradient-to-r from-primary-600 to-accent-500 bg-clip-text text-transparent -ml-2">
+                         HabitLog
+                    </span>
+                    <button id="themeToggle" class="ml-4 p-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                        <i class="fas fa-moon dark:hidden text-gray-700"></i>
+                        <i class="fas fa-sun hidden dark:block text-yellow-400"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="pt-20 pb-12 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto">
+        <!-- Header Section -->
+        <div class="mb-8">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">⏰ Set Custom Reminders</h1>
+                    <p class="text-gray-600 dark:text-gray-400">Create personalized reminders for your habits and activities</p>
+                </div>
+                <div class="bg-gradient-to-r from-primary-600 to-accent-500 p-4 rounded-xl text-white text-center">
+                    <span class="text-2xl font-bold" id="reminderCount">0</span>
+                    <p class="text-xs opacity-90">Active Reminders</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Info Card -->
+        <div class="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl p-4 mb-6 text-white">
+            <div class="flex items-center space-x-3">
+                <i class="fas fa-info-circle text-xl"></i>
+                <p class="text-sm">Set custom reminders for any time of day. You'll receive email notifications at your chosen times.</p>
+            </div>
+        </div>
+
+        <!-- Reminders List -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden mb-6">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Your Reminders</h2>
+                <button onclick="addReminder()" class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 transition-colors">
+                    <i class="fas fa-plus-circle text-2xl"></i>
+                </button>
+            </div>
+            
+            <div id="remindersList" class="divide-y divide-gray-200 dark:divide-gray-700">
+                <!-- Reminders will be dynamically inserted here -->
+                <div class="text-center py-12 text-gray-500 dark:text-gray-400">
+                    <i class="fas fa-bell-slash text-4xl mb-3 opacity-50"></i>
+                    <p>No reminders set yet</p>
+                    <p class="text-sm mt-1">Click the + button to add your first reminder</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex justify-end space-x-4">
+            <button onclick="goBack()" class="px-6 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                <i class="fas fa-times mr-2"></i>Cancel
+            </button>
+            <button onclick="saveReminders()" class="px-6 py-2 bg-gradient-to-r from-primary-600 to-accent-500 text-white rounded-lg hover:shadow-lg transition-all transform hover:scale-105">
+                <i class="fas fa-save mr-2"></i>Save All Reminders
+            </button>
+        </div>
+    </main>
+
+    <!-- Add/Edit Reminder Modal -->
+    <div id="reminderModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-md w-full mx-4">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold dark:text-white" id="modalTitle">Add New Reminder</h2>
+                <button onclick="hideModal()" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <form id="reminderForm" onsubmit="saveReminder(event)">
+                <input type="hidden" id="reminderId">
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 dark:text-gray-300 mb-2">Reminder Title</label>
+                    <input type="text" id="reminderTitle" required 
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white"
+                           placeholder="e.g., Morning Meditation">
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 dark:text-gray-300 mb-2">Description (Optional)</label>
+                    <textarea id="reminderDescription" rows="2" 
+                              class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white"
+                              placeholder="Add details about this reminder"></textarea>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-gray-700 dark:text-gray-300 mb-2">Time</label>
+                        <input type="time" id="reminderTime" required 
+                               class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white time-input"
+                               value="09:00">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 dark:text-gray-300 mb-2">AM/PM</label>
+                        <select id="reminderAmPm" 
+                                class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white">
+                            <option value="AM">AM</option>
+                            <option value="PM">PM</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 dark:text-gray-300 mb-2">Repeat</label>
+                    <select id="reminderRepeat" 
+                            class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white">
+                        <option value="daily">Daily</option>
+                        <option value="weekdays">Weekdays (Mon-Fri)</option>
+                        <option value="weekends">Weekends</option>
+                        <option value="monday">Every Monday</option>
+                        <option value="tuesday">Every Tuesday</option>
+                        <option value="wednesday">Every Wednesday</option>
+                        <option value="thursday">Every Thursday</option>
+                        <option value="friday">Every Friday</option>
+                        <option value="saturday">Every Saturday</option>
+                        <option value="sunday">Every Sunday</option>
+                    </select>
+                </div>
+                
+                <div class="mb-6">
+                    <label class="flex items-center space-x-3 cursor-pointer">
+                        <input type="checkbox" id="reminderActive" checked 
+                               class="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500">
+                        <span class="text-gray-700 dark:text-gray-300">Active</span>
+                    </label>
+                </div>
+                
+                <div class="flex space-x-3">
+                    <button type="button" onclick="hideModal()" 
+                            class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                        Cancel
+                    </button>
+                    <button type="submit" 
+                            class="flex-1 px-4 py-2 bg-gradient-to-r from-primary-600 to-accent-500 text-white rounded-lg hover:shadow-lg transition-all">
+                        Save Reminder
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-md w-full mx-4">
+            <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4">Delete Reminder</h2>
+            <p class="text-gray-600 dark:text-gray-400 mb-6">Are you sure you want to delete this reminder? You'll no longer receive notifications for it.</p>
+            <div class="flex justify-end space-x-4">
+                <button onclick="hideDeleteModal()" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                    Cancel
+                </button>
+                <button id="confirmDeleteBtn" class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
+                    Delete
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating AI Chat Widget -->
+    <script src="/js/chat-widget.js"></script>
+    <!-- Page Transitions -->
+    <script src="/js/page-transitions.js"></script>
+
+    <script>
+        // Theme Toggle
+        const themeToggle = document.getElementById('themeToggle');
+        const html = document.documentElement;
+        
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark') html.classList.add('dark');
+        else if (savedTheme === 'light') html.classList.remove('dark');
+
+        themeToggle.addEventListener('click', () => {
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+        });
+
+        // Go back to dashboard
+        function goBack() {
+            window.location.href = '/dashboard';
+        }
+
+        // State
+        let reminders = [];
+        let currentReminderId = null;
+        let deleteReminderId = null;
+
+        // Toast functions
+        function showError(message) {
+            const toast = document.getElementById('errorToast');
+            document.getElementById('errorMessage').textContent = message;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 5000);
+        }
+
+        function showSuccess(message) {
+            const toast = document.getElementById('successToast');
+            document.getElementById('successMessage').textContent = message;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+
+        function showLoading() {
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+            document.getElementById('loadingOverlay').classList.add('flex');
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+            document.getElementById('loadingOverlay').classList.remove('flex');
+        }
+
+        // Modal functions
+        function showModal() {
+            document.getElementById('reminderModal').classList.remove('hidden');
+            document.getElementById('reminderModal').classList.add('flex');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function hideModal() {
+            document.getElementById('reminderModal').classList.add('hidden');
+            document.getElementById('reminderModal').classList.remove('flex');
+            document.body.style.overflow = 'auto';
+            document.getElementById('reminderForm').reset();
+            document.getElementById('reminderId').value = '';
+        }
+
+        function showDeleteModal(id) {
+            deleteReminderId = id;
+            document.getElementById('deleteModal').classList.remove('hidden');
+            document.getElementById('deleteModal').classList.add('flex');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function hideDeleteModal() {
+            document.getElementById('deleteModal').classList.add('hidden');
+            document.getElementById('deleteModal').classList.remove('flex');
+            document.body.style.overflow = 'auto';
+            deleteReminderId = null;
+        }
+
+        // Load reminders from localStorage
+        function loadReminders() {
+            const saved = localStorage.getItem('customReminders');
+            if (saved) {
+                reminders = JSON.parse(saved);
+            } else {
+                // Sample data for demo
+                reminders = [
+                    {
+                        id: '1',
+                        title: 'Morning Meditation',
+                        description: '10 minutes of mindfulness',
+                        time: '06:00',
+                        ampm: 'AM',
+                        repeat: 'daily',
+                        active: true
+                    },
+                    {
+                        id: '2',
+                        title: 'Evening Jog',
+                        description: '30 minutes run in the park',
+                        time: '07:00',
+                        ampm: 'PM',
+                        repeat: 'weekdays',
+                        active: true
+                    }
+                ];
+            }
+            renderReminders();
+        }
+
+        // Save reminders to localStorage
+        function saveRemindersToStorage() {
+            localStorage.setItem('customReminders', JSON.stringify(reminders));
+            renderReminders();
+        }
+
+        // Render reminders list
+        function renderReminders() {
+            const list = document.getElementById('remindersList');
+            const countEl = document.getElementById('reminderCount');
+            
+            if (reminders.length === 0) {
+                list.innerHTML = `
+                    <div class="text-center py-12 text-gray-500 dark:text-gray-400">
+                        <i class="fas fa-bell-slash text-4xl mb-3 opacity-50"></i>
+                        <p>No reminders set yet</p>
+                        <p class="text-sm mt-1">Click the + button to add your first reminder</p>
+                    </div>
+                `;
+                countEl.textContent = '0';
+                return;
+            }
+
+            countEl.textContent = reminders.length;
+
+            list.innerHTML = reminders.map(reminder => {
+                const timeDisplay = `${reminder.time} ${reminder.ampm}`;
+                const repeatDisplay = reminder.repeat.charAt(0).toUpperCase() + reminder.repeat.slice(1);
+                
+                return `
+                    <div class="reminder-card p-4 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">
+                        <div class="flex items-center justify-between">
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-3">
+                                    <div class="text-2xl">⏰</div>
+                                    <div>
+                                        <h3 class="font-semibold text-gray-900 dark:text-white">${reminder.title}</h3>
+                                        <p class="text-sm text-gray-600 dark:text-gray-400">${reminder.description || 'No description'}</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center space-x-4 mt-2 text-sm">
+                                    <span class="text-primary-600 dark:text-primary-400">
+                                        <i class="far fa-clock mr-1"></i>${timeDisplay}
+                                    </span>
+                                    <span class="text-gray-500 dark:text-gray-400">
+                                        <i class="far fa-calendar mr-1"></i>${repeatDisplay}
+                                    </span>
+                                    ${reminder.active ? 
+                                        '<span class="text-green-600 dark:text-green-400"><i class="fas fa-check-circle mr-1"></i>Active</span>' : 
+                                        '<span class="text-gray-400"><i class="fas fa-circle mr-1"></i>Inactive</span>'}
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <button onclick="editReminder('${reminder.id}')" class="text-gray-500 hover:text-primary-600 dark:text-gray-400 dark:hover:text-primary-400 p-2">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button onclick="showDeleteModal('${reminder.id}')" class="text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 p-2">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Add new reminder
+        function addReminder() {
+            document.getElementById('modalTitle').textContent = 'Add New Reminder';
+            document.getElementById('reminderForm').reset();
+            document.getElementById('reminderId').value = '';
+            document.getElementById('reminderTime').value = '09:00';
+            showModal();
+        }
+
+        // Edit reminder
+        function editReminder(id) {
+            const reminder = reminders.find(r => r.id === id);
+            if (!reminder) return;
+
+            document.getElementById('modalTitle').textContent = 'Edit Reminder';
+            document.getElementById('reminderId').value = reminder.id;
+            document.getElementById('reminderTitle').value = reminder.title;
+            document.getElementById('reminderDescription').value = reminder.description || '';
+            document.getElementById('reminderTime').value = reminder.time;
+            document.getElementById('reminderAmPm').value = reminder.ampm;
+            document.getElementById('reminderRepeat').value = reminder.repeat;
+            document.getElementById('reminderActive').checked = reminder.active;
+            
+            showModal();
+        }
+
+        // Save reminder (from form)
+        function saveReminder(event) {
+            event.preventDefault();
+
+            const reminderData = {
+                id: document.getElementById('reminderId').value || Date.now().toString(),
+                title: document.getElementById('reminderTitle').value,
+                description: document.getElementById('reminderDescription').value,
+                time: document.getElementById('reminderTime').value,
+                ampm: document.getElementById('reminderAmPm').value,
+                repeat: document.getElementById('reminderRepeat').value,
+                active: document.getElementById('reminderActive').checked
+            };
+
+            if (document.getElementById('reminderId').value) {
+                // Update existing
+                const index = reminders.findIndex(r => r.id === reminderData.id);
+                if (index !== -1) {
+                    reminders[index] = reminderData;
+                }
+                showSuccess('Reminder updated successfully!');
+            } else {
+                // Add new
+                reminders.push(reminderData);
+                showSuccess('Reminder added successfully!');
+            }
+
+            saveRemindersToStorage();
+            hideModal();
+        }
+
+        // Save all reminders (main save button)
+        function saveReminders() {
+            saveRemindersToStorage();
+            showSuccess('All reminders saved successfully!');
+        }
+
+        // Cancel changes
+        function cancelChanges() {
+            if (confirm('Discard all unsaved changes?')) {
+                loadReminders(); // Reload from storage
+                showSuccess('Changes discarded');
+            }
+        }
+
+        // Delete reminder
+        document.getElementById('confirmDeleteBtn').addEventListener('click', () => {
+            if (deleteReminderId) {
+                reminders = reminders.filter(r => r.id !== deleteReminderId);
+                saveRemindersToStorage();
+                hideDeleteModal();
+                showSuccess('Reminder deleted successfully!');
+            }
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadReminders();
+        });
+    </script>
+</body>
+</html>

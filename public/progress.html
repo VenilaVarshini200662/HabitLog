@@ -1,0 +1,1004 @@
+<!-- public/progress.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Progress - HabitLog</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src="/js/translations.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: { 50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81' },
+                        accent: { 50: '#f0fdfa', 100: '#ccfbf1', 200: '#99f6e4', 300: '#5eead4', 400: '#2dd4bf', 500: '#14b8a6', 600: '#0d9488', 700: '#0f766e', 800: '#115e59', 900: '#134e4a' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .chart-container {
+            position: relative;
+            height: 350px;
+            width: 100%;
+        }
+        .year-selector {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .year-btn {
+            padding: 0.5rem 1rem;
+            background-color: #f3f4f6;
+            border-radius: 0.5rem;
+            transition: all 0.2s;
+        }
+        .year-btn:hover {
+            background-color: #e5e7eb;
+        }
+        .dark .year-btn {
+            background-color: #374151;
+            color: #e5e7eb;
+        }
+        .dark .year-btn:hover {
+            background-color: #4b5563;
+        }
+        
+        /* Navigation link styles */
+        .nav-link {
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 2px;
+            background: linear-gradient(to right, #6366f1, #14b8a6);
+            transition: width 0.3s ease;
+        }
+        
+        .nav-link:hover::after {
+            width: 80%;
+        }
+        
+        .nav-link.active {
+            color: #4f46e5;
+        }
+        
+        .dark .nav-link.active {
+            color: #818cf8;
+        }
+        
+        .nav-link.active::after {
+            width: 80%;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+    <!-- Error Toast -->
+    <div id="errorToast" class="fixed top-4 right-4 z-50 hidden">
+        <div class="bg-red-500 text-white px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3">
+            <i class="fas fa-exclamation-circle text-xl"></i>
+            <span id="errorMessage">Error occurred</span>
+            <button onclick="hideErrorToast()" class="ml-4 hover:text-red-100">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Success Toast -->
+    <div id="successToast" class="fixed top-4 right-4 z-50 hidden">
+        <div class="bg-green-500 text-white px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3">
+            <i class="fas fa-check-circle text-xl"></i>
+            <span id="successMessage">Success!</span>
+            <button onclick="hideSuccessToast()" class="ml-4 hover:text-green-100">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 flex flex-col items-center">
+            <div class="w-16 h-16 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin mb-4"></div>
+            <p class="text-gray-700 dark:text-gray-300">Loading...</p>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+  <!-- public/index.html - Updated Responsive Navigation -->
+<nav class="fixed w-full z-40 glass-effect transition-all duration-300">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center h-14 sm:h-16">
+            <!-- Logo -->
+            <div class="flex items-center space-x-2">
+                <img src="habitlog.png" alt="HabitLog" class="h-8 sm:h-10 md:h-12 w-auto">
+                <span class="text-lg sm:text-xl md:text-2xl font-bold bg-gradient-to-r from-primary-600 to-accent-500 bg-clip-text text-transparent" data-i18n="appName">
+                    HabitLog
+                </span>
+            </div>
+
+            <!-- Desktop Navigation Links (hidden on mobile) -->
+            <div class="hidden md:flex items-center space-x-4">
+                <a href="/dashboard" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Dashboard</a>
+                <a href="/calendar" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Calendar</a>
+                <a href="/stats" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                    <i class="fas fa-chart-pie mr-1"></i> Stats
+                </a>
+                <a href="/progress" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Progress</a>
+                <a href="/mood-tracker" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                    <i class="fas fa-smile mr-1"></i> Mood
+                </a>
+                <a href="/settings" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Settings</a>
+            </div>
+
+            <!-- Right side buttons -->
+            <div class="flex items-center space-x-2 sm:space-x-4">
+                <!-- Theme Toggle -->
+                <button id="themeToggle" class="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-all duration-300 transform hover:scale-110">
+                    <i class="fas fa-moon dark:hidden text-gray-700 text-sm sm:text-base"></i>
+                    <i class="fas fa-sun hidden dark:block text-yellow-400 text-sm sm:text-base"></i>
+                </button>
+
+                <!-- Logout Button (visible on desktop) -->
+                <button id="logoutBtn" class="hidden sm:block px-3 sm:px-4 py-1.5 sm:py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-all duration-300 transform hover:scale-105 text-xs sm:text-sm">
+                    <i class="fas fa-sign-out-alt mr-1"></i> Logout
+                </button>
+
+                <!-- Mobile Menu Button (only visible on mobile) -->
+                <button id="mobileMenuBtn" class="md:hidden p-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                    <i class="fas fa-bars text-lg sm:text-xl"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Menu Panel (hidden by default) -->
+    <div id="mobileMenu" class="md:hidden bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 shadow-lg transform transition-all duration-300 ease-in-out overflow-hidden" style="max-height: 0; opacity: 0;">
+        <div class="px-4 py-3 space-y-2">
+            <a href="/dashboard" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-home w-6 mr-3"></i> Dashboard
+            </a>
+            <a href="/calendar" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-calendar w-6 mr-3"></i> Calendar
+            </a>
+            <a href="/stats" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-chart-pie w-6 mr-3"></i> Statistics
+            </a>
+            <a href="/progress" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-chart-line w-6 mr-3"></i> Progress
+            </a>
+            <a href="/mood-tracker" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-smile w-6 mr-3"></i> Mood Tracker
+            </a>
+            <a href="/settings" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-cog w-6 mr-3"></i> Settings
+            </a>
+            
+            <!-- Divider -->
+            <div class="border-t border-gray-200 dark:border-gray-700 my-2"></div>
+            
+            <!-- Logout button in mobile menu -->
+            <button id="mobileLogoutBtn" class="w-full px-4 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm flex items-center justify-center">
+                <i class="fas fa-sign-out-alt mr-2"></i> Logout
+            </button>
+        </div>
+    </div>
+</nav>
+
+
+    <!-- Main Content -->
+    <main class="pt-20 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">Progress Tracking</h1>
+            <p class="text-gray-600 dark:text-gray-400">Monitor your weekly, monthly, and yearly progress</p>
+        </div>
+
+        <!-- Time Period Selector -->
+        <div class="flex justify-center space-x-4 mb-8">
+            <button id="weeklyBtn" class="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors">
+                Weekly
+            </button>
+            <button id="monthlyBtn" class="px-6 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                Monthly
+            </button>
+            <button id="yearlyBtn" class="px-6 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                Yearly
+            </button>
+        </div>
+
+        <!-- Weekly Progress Chart -->
+        <div id="weeklyChart" class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md mb-6">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Weekly Progress</h2>
+            <div class="chart-container">
+                <canvas id="weeklyProgressChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Monthly Progress Chart -->
+        <div id="monthlyChart" class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md hidden">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Monthly Progress</h2>
+            <div class="chart-container">
+                <canvas id="monthlyProgressChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Yearly Progress Chart -->
+        <div id="yearlyChart" class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md hidden">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Yearly Progress</h2>
+            
+            <!-- Year Navigation -->
+            <div class="year-selector">
+                <button id="prevYear" class="year-btn">
+                    <i class="fas fa-chevron-left mr-2"></i>Previous Year
+                </button>
+                <span id="currentYear" class="text-lg font-semibold text-gray-700 dark:text-gray-300"></span>
+                <button id="nextYear" class="year-btn">
+                    Next Year<i class="fas fa-chevron-right ml-2"></i>
+                </button>
+            </div>
+            
+            <div class="chart-container">
+                <canvas id="yearlyProgressChart"></canvas>
+            </div>
+        </div>
+
+        
+        <!-- Smart Insights Section -->
+ <div class="mt-10 bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-md transition-all duration-300 hover:shadow-xl">
+
+    <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-semibold bg-gradient-to-r from-primary-600 to-accent-500 bg-clip-text text-transparent">
+            Smart Insights
+        </h2>
+        <i class="fas fa-lightbulb text-yellow-400 text-xl"></i>
+    </div>
+
+    <ul id="smartInsights" class="space-y-4"></ul>
+
+</div>
+
+        <!-- Achievement Badges -->
+        <div class="mt-8 bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Achievement Badges</h2>
+            <div id="badgesContainer" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <!-- Badges will be dynamically inserted -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Floating AI Chat Widget -->
+    <script src="/js/chat-widget.js"></script>
+    
+    <!-- Page Transitions - LOADED LAST -->
+    <script src="/js/page-transitions.js"></script>
+
+    <script>
+    // Mobile Menu Toggle
+    document.addEventListener('DOMContentLoaded', function() {
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const mobileMenu = document.getElementById('mobileMenu');
+        
+        if (mobileMenuBtn && mobileMenu) {
+            mobileMenuBtn.addEventListener('click', function() {
+                // Toggle menu
+                if (mobileMenu.style.maxHeight === '0px' || mobileMenu.style.maxHeight === '') {
+                    mobileMenu.style.maxHeight = '500px';
+                    mobileMenu.style.opacity = '1';
+                    mobileMenuBtn.innerHTML = '<i class="fas fa-times text-lg sm:text-xl"></i>';
+                } else {
+                    mobileMenu.style.maxHeight = '0px';
+                    mobileMenu.style.opacity = '0';
+                    mobileMenuBtn.innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                }
+            });
+
+            // Close menu when clicking outside
+            document.addEventListener('click', function(event) {
+                if (!mobileMenu.contains(event.target) && !mobileMenuBtn.contains(event.target)) {
+                    mobileMenu.style.maxHeight = '0px';
+                    mobileMenu.style.opacity = '0';
+                    mobileMenuBtn.innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                }
+            });
+
+            // Close menu on window resize (if switching to desktop)
+            window.addEventListener('resize', function() {
+                if (window.innerWidth >= 768) {
+                    mobileMenu.style.maxHeight = '0px';
+                    mobileMenu.style.opacity = '0';
+                    if (mobileMenuBtn) {
+                        mobileMenuBtn.innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                    }
+                }
+            });
+        }
+
+        // Logout functionality
+        const logoutBtn = document.getElementById('logoutBtn');
+        const mobileLogoutBtn = document.getElementById('mobileLogoutBtn');
+        
+        async function handleLogout() {
+            try {
+                // Close mobile menu if open
+                if (mobileMenu) {
+                    mobileMenu.style.maxHeight = '0px';
+                    mobileMenu.style.opacity = '0';
+                    if (mobileMenuBtn) {
+                        mobileMenuBtn.innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                    }
+                }
+                
+                // Call logout API
+                const response = await fetch('/api/auth/logout', { 
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    // Clear user data from localStorage
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('language');
+                    
+                    // Redirect to landing page
+                    window.location.href = '/';
+                } else {
+                    console.error('Logout failed');
+                    // Still redirect even if API fails
+                    window.location.href = '/';
+                }
+            } catch (error) {
+                console.error('Error logging out:', error);
+                // Redirect anyway
+                window.location.href = '/';
+            }
+        }
+
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', handleLogout);
+        }
+
+        if (mobileLogoutBtn) {
+            mobileLogoutBtn.addEventListener('click', handleLogout);
+        }
+    });
+        // Theme Toggle
+        const themeToggle = document.getElementById('themeToggle');
+        const html = document.documentElement;
+        
+        themeToggle.addEventListener('click', () => {
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+            updateCharts();
+        });
+
+        if (localStorage.getItem('theme') === 'dark') {
+            html.classList.add('dark');
+        }
+
+        // Toast functions
+        function showError(message) {
+            const toast = document.getElementById('errorToast');
+            document.getElementById('errorMessage').textContent = message;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 5000);
+        }
+
+        function hideErrorToast() {
+            document.getElementById('errorToast').classList.add('hidden');
+        }
+
+        function showSuccess(message) {
+            const toast = document.getElementById('successToast');
+            document.getElementById('successMessage').textContent = message;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+
+        function hideSuccessToast() {
+            document.getElementById('successToast').classList.add('hidden');
+        }
+
+        function showLoading() {
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+            document.getElementById('loadingOverlay').classList.add('flex');
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+            document.getElementById('loadingOverlay').classList.remove('flex');
+        }
+
+        // State
+        let habits = [];
+        let weeklyChart, monthlyChart, yearlyChart;
+        let currentView = 'weekly';
+        let currentYear = new Date().getFullYear();
+
+        // Load habits
+        async function loadHabits() {
+            try {
+                showLoading();
+                const response = await fetch('/api/habits');
+                if (response.ok) {
+                    habits = await response.json();
+                    initCharts();
+                    renderBadges();
+                    document.getElementById('currentYear').textContent = currentYear;
+                }
+                hideLoading();
+            } catch (error) {
+                hideLoading();
+                console.error('Error loading habits:', error);
+                showError('Failed to load habits');
+            }
+        }
+
+        // Initialize charts
+        function initCharts() {
+            const isDark = html.classList.contains('dark');
+            const textColor = isDark ? '#e5e7eb' : '#374151';
+            const gridColor = isDark ? '#374151' : '#e5e7eb';
+
+            // Weekly Chart
+            const weeklyCtx = document.getElementById('weeklyProgressChart').getContext('2d');
+            
+            // Get last 7 days
+            const weekDays = [];
+            const weekData = [];
+            const today = new Date();
+            
+            for (let i = 6; i >= 0; i--) {
+                const date = new Date(today);
+                date.setDate(today.getDate() - i);
+                const dateStr = date.toISOString().split('T')[0];
+                const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+                weekDays.push(dayName);
+                
+                const completed = habits.filter(h => h.completedDates?.includes(dateStr)).length;
+                weekData.push(completed);
+            }
+
+            if (weeklyChart) weeklyChart.destroy();
+            
+            weeklyChart = new Chart(weeklyCtx, {
+                type: 'line',
+                data: {
+                    labels: weekDays,
+                    datasets: [{
+                        label: 'Habits Completed',
+                        data: weekData,
+                        borderColor: '#6366f1',
+                        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        pointBackgroundColor: '#14b8a6',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointRadius: 6,
+                        pointHoverRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: gridColor },
+                            ticks: { color: textColor }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: textColor }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+
+            // Monthly Chart
+            const monthlyCtx = document.getElementById('monthlyProgressChart').getContext('2d');
+            
+            // Get last 30 days grouped by week
+            const weeks = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
+            const monthlyData = [0, 0, 0, 0];
+            
+            for (let i = 29; i >= 0; i--) {
+                const date = new Date(today);
+                date.setDate(today.getDate() - i);
+                const dateStr = date.toISOString().split('T')[0];
+                const weekIndex = Math.floor(i / 7);
+                
+                if (weekIndex < 4) {
+                    monthlyData[weekIndex] += habits.filter(h => h.completedDates?.includes(dateStr)).length;
+                }
+            }
+
+            if (monthlyChart) monthlyChart.destroy();
+            
+            monthlyChart = new Chart(monthlyCtx, {
+                type: 'bar',
+                data: {
+                    labels: weeks,
+                    datasets: [{
+                        label: 'Weekly Completions',
+                        data: monthlyData,
+                        backgroundColor: ['#6366f1', '#14b8a6', '#8b5cf6', '#ec4899'],
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: gridColor },
+                            ticks: { color: textColor }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: textColor }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+
+            // Yearly Chart
+            updateYearlyChart();
+        }
+
+        // Update yearly chart
+        function updateYearlyChart() {
+            const yearlyCtx = document.getElementById('yearlyProgressChart').getContext('2d');
+            const isDark = html.classList.contains('dark');
+            const textColor = isDark ? '#e5e7eb' : '#374151';
+            const gridColor = isDark ? '#374151' : '#e5e7eb';
+
+            // Get monthly data for the selected year
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const monthlyData = new Array(12).fill(0);
+            
+            const startDate = new Date(currentYear, 0, 1);
+            const endDate = new Date(currentYear, 11, 31);
+            
+            habits.forEach(habit => {
+                if (habit.completedDates) {
+                    habit.completedDates.forEach(dateStr => {
+                        const date = new Date(dateStr);
+                        if (date >= startDate && date <= endDate) {
+                            const month = date.getMonth();
+                            monthlyData[month]++;
+                        }
+                    });
+                }
+            });
+
+            if (yearlyChart) yearlyChart.destroy();
+            
+            yearlyChart = new Chart(yearlyCtx, {
+                type: 'line',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: 'Monthly Completions',
+                        data: monthlyData,
+                        borderColor: '#ec4899',
+                        backgroundColor: 'rgba(236, 72, 153, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        pointBackgroundColor: '#8b5cf6',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointRadius: 5,
+                        pointHoverRadius: 7
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: gridColor },
+                            ticks: { color: textColor }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: textColor }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
+        // Render achievement badges
+        function renderBadges() {
+            const container = document.getElementById('badgesContainer');
+            const badges = [];
+
+            // Calculate achievements
+            habits.forEach(habit => {
+                if (habit.streak >= 3) {
+                    badges.push({
+                        name: '3-Day Starter',
+                        icon: '🌱',
+                        color: 'green',
+                        description: 'Started a habit for 3 days straight'
+                    });
+                }
+                if (habit.streak >= 7) {
+                    badges.push({
+                        name: '7-Day Streak',
+                        icon: '🔥',
+                        color: 'orange',
+                        description: 'Maintained a habit for 7 days straight'
+                    });
+                }
+                if (habit.streak >= 30) {
+                    badges.push({
+                        name: 'Monthly Master',
+                        icon: '📅',
+                        color: 'blue',
+                        description: '30-day streak achieved'
+                    });
+                }
+                if (habit.longestStreak >= 100) {
+                    badges.push({
+                        name: 'Century Club',
+                        icon: '💯',
+                        color: 'purple',
+                        description: '100+ day streak'
+                    });
+                }
+                if (habit.completedDates?.length >= 365) {
+                    badges.push({
+                        name: 'Year Warrior',
+                        icon: '⭐',
+                        color: 'yellow',
+                        description: 'Completed a habit for a full year'
+                    });
+                }
+            });
+
+            // Add consistency badge
+            const totalCompletions = habits.reduce((sum, h) => sum + (h.completedDates?.length || 0), 0);
+            if (totalCompletions >= 100) {
+                badges.push({
+                    name: 'Consistency King',
+                    icon: '👑',
+                    color: 'gold',
+                    description: '100 total habit completions'
+                });
+            }
+
+            // Add yearly streak badge
+            const hasYearLongStreak = habits.some(h => h.longestStreak >= 365);
+            if (hasYearLongStreak) {
+                badges.push({
+                    name: 'Year-Long Warrior',
+                    icon: '🗓️',
+                    color: 'green',
+                    description: 'Maintained a habit for an entire year'
+                });
+            }
+
+            // Remove duplicates
+            const uniqueBadges = badges.filter((badge, index, self) =>
+                index === self.findIndex(b => b.name === badge.name)
+            );
+
+            if (uniqueBadges.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full text-center py-8">
+                        <p class="text-gray-500 dark:text-gray-400">Complete habits to earn achievement badges!</p>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = uniqueBadges.map(badge => {
+                    // Map color names to actual Tailwind classes
+                    const colorClasses = {
+                        'green': 'from-green-100 to-green-200 dark:from-green-900 dark:to-green-800',
+                        'orange': 'from-orange-100 to-orange-200 dark:from-orange-900 dark:to-orange-800',
+                        'blue': 'from-blue-100 to-blue-200 dark:from-blue-900 dark:to-blue-800',
+                        'purple': 'from-purple-100 to-purple-200 dark:from-purple-900 dark:to-purple-800',
+                        'yellow': 'from-yellow-100 to-yellow-200 dark:from-yellow-900 dark:to-yellow-800',
+                        'gold': 'from-yellow-200 to-amber-200 dark:from-yellow-800 dark:to-amber-800',
+                        'default': 'from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700'
+                    };
+                    
+                    const gradientClass = colorClasses[badge.color] || colorClasses.default;
+                    
+                    return `
+                        <div class="bg-gradient-to-br ${gradientClass} rounded-xl p-4 text-center transform hover:scale-105 transition-all">
+                            <div class="text-4xl mb-2">${badge.icon}</div>
+                            <h3 class="font-semibold text-gray-900 dark:text-white mb-1">${badge.name}</h3>
+                            <p class="text-xs text-gray-600 dark:text-gray-400">${badge.description}</p>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        // Chart visibility toggle
+        document.getElementById('weeklyBtn').addEventListener('click', () => {
+            document.getElementById('weeklyChart').classList.remove('hidden');
+            document.getElementById('monthlyChart').classList.add('hidden');
+            document.getElementById('yearlyChart').classList.add('hidden');
+            
+            document.getElementById('weeklyBtn').classList.add('bg-primary-600', 'text-white');
+            document.getElementById('weeklyBtn').classList.remove('bg-gray-200', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+            
+            document.getElementById('monthlyBtn').classList.remove('bg-primary-600', 'text-white');
+            document.getElementById('monthlyBtn').classList.add('bg-gray-200', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+            
+            document.getElementById('yearlyBtn').classList.remove('bg-primary-600', 'text-white');
+            document.getElementById('yearlyBtn').classList.add('bg-gray-200', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+        });
+
+        document.getElementById('monthlyBtn').addEventListener('click', () => {
+            document.getElementById('weeklyChart').classList.add('hidden');
+            document.getElementById('monthlyChart').classList.remove('hidden');
+            document.getElementById('yearlyChart').classList.add('hidden');
+            
+            document.getElementById('monthlyBtn').classList.add('bg-primary-600', 'text-white');
+            document.getElementById('monthlyBtn').classList.remove('bg-gray-200', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+            
+            document.getElementById('weeklyBtn').classList.remove('bg-primary-600', 'text-white');
+            document.getElementById('weeklyBtn').classList.add('bg-gray-200', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+            
+            document.getElementById('yearlyBtn').classList.remove('bg-primary-600', 'text-white');
+            document.getElementById('yearlyBtn').classList.add('bg-gray-200', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+        });
+
+        document.getElementById('yearlyBtn').addEventListener('click', () => {
+            document.getElementById('weeklyChart').classList.add('hidden');
+            document.getElementById('monthlyChart').classList.add('hidden');
+            document.getElementById('yearlyChart').classList.remove('hidden');
+            
+            document.getElementById('yearlyBtn').classList.add('bg-primary-600', 'text-white');
+            document.getElementById('yearlyBtn').classList.remove('bg-gray-200', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+            
+            document.getElementById('weeklyBtn').classList.remove('bg-primary-600', 'text-white');
+            document.getElementById('weeklyBtn').classList.add('bg-gray-200', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+            
+            document.getElementById('monthlyBtn').classList.remove('bg-primary-600', 'text-white');
+            document.getElementById('monthlyBtn').classList.add('bg-gray-200', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+            
+            // Refresh yearly chart when switching to yearly view
+            updateYearlyChart();
+        });
+
+        // Year navigation
+        document.getElementById('prevYear').addEventListener('click', () => {
+            currentYear--;
+            document.getElementById('currentYear').textContent = currentYear;
+            updateYearlyChart();
+        });
+
+        document.getElementById('nextYear').addEventListener('click', () => {
+            currentYear++;
+            document.getElementById('currentYear').textContent = currentYear;
+            updateYearlyChart();
+        });
+
+        // Update charts on theme change
+        function updateCharts() {
+            if (habits.length > 0) {
+                initCharts();
+            }
+        }
+
+        // Add logout button
+        function addLogoutButton() {
+            const nav = document.querySelector('.flex.items-center.space-x-2.md\\:space-x-4');
+            if (!nav) return;
+            
+            if (document.getElementById('logout-btn')) return;
+            
+            const logoutBtn = document.createElement('button');
+            logoutBtn.id = 'logout-btn';
+            logoutBtn.onclick = logout;
+            logoutBtn.className = 'px-3 py-2 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition-colors';
+            logoutBtn.title = 'Logout';
+            logoutBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i>';
+            nav.appendChild(logoutBtn);
+        }
+
+        // Logout function
+        async function logout() {
+            try {
+                await fetch('/api/auth/logout', { method: 'POST' });
+                localStorage.removeItem('user');
+                window.location.href = '/';
+            } catch (error) {
+                console.error('Error logging out:', error);
+            }
+        }
+
+        // Initialize active nav link
+        function setActiveNavLink() {
+            const currentPath = window.location.pathname;
+            const navLinks = document.querySelectorAll('.nav-link');
+            
+            navLinks.forEach(link => {
+                const href = link.getAttribute('href');
+                if (href === currentPath) {
+                    link.classList.add('active');
+                } else {
+                    link.classList.remove('active');
+                }
+            });
+        }
+
+        // Initial load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadHabits();
+            addLogoutButton();
+            setActiveNavLink();
+        });
+
+        document.addEventListener("DOMContentLoaded", async function () {
+
+    try {
+        const response = await fetch('/api/habits');
+
+        if (!response.ok) {
+            console.error("Failed to fetch habits");
+            return;
+        }
+
+        const habits = await response.json();
+
+        const insights = generateSmartInsights(habits);
+
+        const container = document.getElementById("smartInsights");
+
+        if (!container) return;
+
+        container.innerHTML = "";
+
+        insights.forEach(text => {
+
+            const li = document.createElement("li");
+li.className = `
+flex justify-between items-center
+bg-gray-50 dark:bg-gray-700
+p-4 rounded-xl
+shadow-sm
+transition-all duration-300
+hover:shadow-lg hover:-translate-y-1
+`;
+
+
+            const message = document.createElement("span");
+            message.textContent = text;
+
+            const button = document.createElement("button");
+            button.textContent = "Take Action";
+           button.className = `
+px-4 py-2
+bg-gradient-to-r from-primary-500 to-accent-500
+text-white text-sm font-medium
+rounded-full
+shadow-md
+transition-all duration-300
+hover:scale-105 hover:shadow-lg
+`;
+
+
+            button.addEventListener("click", function () {
+                window.location.href = "dashboard.html";
+            });
+
+            li.appendChild(message);
+            li.appendChild(button);
+
+            container.appendChild(li);
+        });
+
+    } catch (error) {
+        console.error("Error loading insights:", error);
+    }
+
+});
+
+
+function generateSmartInsights(habits) {
+
+    let totalDays = 0;
+    let completedDays = 0;
+    let weekendCompletions = 0;
+    let weekdayCompletions = 0;
+    let missedDays = 0;
+
+    habits.forEach(habit => {
+
+        if (!habit.completedDates) return;
+
+        habit.completedDates.forEach(dateStr => {
+
+            totalDays++;
+            completedDays++;
+
+            const day = new Date(dateStr).getDay();
+
+            if (day === 0 || day === 6) {
+                weekendCompletions++;
+            } else {
+                weekdayCompletions++;
+            }
+
+        });
+
+        // Estimate missed days (simple logic)
+        if ((habit.streak || 0) === 0) {
+            missedDays++;
+        }
+
+    });
+
+    let completionRate = totalDays > 0
+        ? ((completedDays / (habits.length * 7)) * 100).toFixed(1)
+        : 0;
+
+    let insights = [];
+
+    if (completionRate < 50) {
+        insights.push("Your completion rate is low. Try reducing goal frequency to improve consistency.");
+    }
+
+    if (weekendCompletions > weekdayCompletions) {
+        insights.push("You perform best on weekends.");
+    }
+
+    if (missedDays > 0) {
+        insights.push("Some habits have zero streak. Try focusing on fewer habits for better consistency.");
+    }
+
+    if (insights.length === 0) {
+        insights.push("Great consistency! Keep building your streak.");
+    }
+
+    return insights;
+}
+    </script>
+</body>
+</html>

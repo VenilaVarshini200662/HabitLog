@@ -1,0 +1,641 @@
+<!-- public/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HabitLog - Track Your Habits, Build Your Streak</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/js/translations.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: { 50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81' },
+                        accent: { 50: '#f0fdfa', 100: '#ccfbf1', 200: '#99f6e4', 300: '#5eead4', 400: '#2dd4bf', 500: '#14b8a6', 600: '#0d9488', 700: '#0f766e', 800: '#115e59', 900: '#134e4a' }
+                    },
+                    animation: {
+                        'gradient': 'gradient 3s ease infinite',
+                        'fade-in': 'fadeIn 0.5s ease-out',
+                        'slide-up': 'slideUp 0.3s ease-out',
+                        'bounce-slow': 'bounce 2s infinite',
+                        'pulse-slow': 'pulse 3s infinite',
+                        'float': 'float 3s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        gradient: { '0%, 100%': { backgroundPosition: '0% 50%' }, '50%': { backgroundPosition: '100% 50%' } },
+                        fadeIn: { '0%': { opacity: '0', transform: 'translateY(10px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+                        slideUp: { '0%': { transform: 'translateY(20px)', opacity: '0' }, '100%': { transform: 'translateY(0)', opacity: '1' } },
+                        float: { '0%, 100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-10px)' } }
+                    },
+                },
+            },
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        /* Better font rendering for Tamil */
+        [lang="ta"], [data-i18n] {
+            font-family: 'Inter', 'Noto Sans Tamil', sans-serif;
+            line-height: 1.6;
+            letter-spacing: 0.3px;
+        }
+
+        body { font-family: 'Inter', sans-serif; transition: background-color 0.3s, color 0.3s; }
+        .bg-gradient-animated {
+            background: linear-gradient(270deg, #6366f1, #14b8a6, #8b5cf6);
+            background-size: 300% 300%;
+            animation: gradient 8s ease infinite;
+        }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s;
+        }
+        .dark .glass-effect {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .error-toast { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .modal-enter { animation: modalEnter 0.3s ease-out; }
+        @keyframes modalEnter { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 transition-all duration-300">
+    <!-- Toast Containers -->
+    <div id="errorToast" class="fixed top-4 right-4 z-50 hidden">
+        <div class="bg-red-500 text-white px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3 error-toast">
+            <i class="fas fa-exclamation-circle text-xl"></i>
+            <span id="errorMessage">Network error occurred</span>
+            <button onclick="hideErrorToast()" class="ml-4 hover:text-red-100"><i class="fas fa-times"></i></button>
+        </div>
+    </div>
+    <div id="successToast" class="fixed top-4 right-4 z-50 hidden">
+        <div class="bg-green-500 text-white px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3 error-toast">
+            <i class="fas fa-check-circle text-xl"></i>
+            <span id="successMessage">Success!</span>
+            <button onclick="hideSuccessToast()" class="ml-4 hover:text-green-100"><i class="fas fa-times"></i></button>
+        </div>
+    </div>
+    <div id="loadingOverlay" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 flex flex-col items-center modal-enter">
+            <div class="w-16 h-16 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin mb-4"></div>
+            <p class="text-gray-700 dark:text-gray-300" data-i18n="loading">Loading...</p>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+   <!-- public/index.html - Updated Responsive Navigation -->
+<nav class="fixed w-full z-40 glass-effect transition-all duration-300">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center h-14 sm:h-16">
+            <!-- Logo -->
+            <div class="flex items-center space-x-2">
+                <img src="habitlog.png" alt="HabitLog" class="h-8 sm:h-10 md:h-12 w-auto">
+                <span class="text-lg sm:text-xl md:text-2xl font-bold bg-gradient-to-r from-primary-600 to-accent-500 bg-clip-text text-transparent" data-i18n="appName">
+                    HabitLog
+                </span>
+            </div>
+
+            <!-- Desktop Navigation Links (hidden on mobile) -->
+           
+
+            <!-- Right side buttons -->
+            <div class="flex items-center space-x-2 sm:space-x-4">
+                <!-- Theme Toggle -->
+                <button id="themeToggle" class="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-all duration-300 transform hover:scale-110">
+                    <i class="fas fa-moon dark:hidden text-gray-700 text-sm sm:text-base"></i>
+                    <i class="fas fa-sun hidden dark:block text-yellow-400 text-sm sm:text-base"></i>
+                </button>
+
+                <!-- Sign Up Button (hidden on mobile when menu is open) -->
+                <button id="showSignupBtn" class="hidden sm:block px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-primary-600 to-accent-500 text-white rounded-lg hover:shadow-lg transition-all duration-300 transform hover:scale-105 text-xs sm:text-sm" data-i18n="getStarted">
+                    Get Started
+                </button>
+
+                <!-- Mobile Menu Button (only visible on mobile) -->
+                <button id="mobileMenuBtn" class="md:hidden p-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                    <i class="fas fa-bars text-lg sm:text-xl"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Menu Panel (hidden by default) -->
+    <div id="mobileMenu" class="md:hidden bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 shadow-lg transform transition-all duration-300 ease-in-out overflow-hidden" style="max-height: 0; opacity: 0;">
+        <div class="px-4 py-3 space-y-2">
+            
+            <!-- Divider -->
+            <div class="border-t border-gray-200 dark:border-gray-700 my-2"></div>
+            
+            <!-- Sign Up in mobile menu -->
+            <button id="mobileSignupBtn" class="w-full px-4 py-3 bg-gradient-to-r from-primary-600 to-accent-500 text-white rounded-lg text-sm" data-i18n="getStarted">
+                Get Started
+            </button>
+        </div>
+    </div>
+</nav>
+
+    <!-- Hero Section -->
+    <section class="relative min-h-screen flex items-center justify-center overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-animated opacity-20"></div>
+        
+        <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-32 text-center">
+            <div class="animate-fade-in">
+                <h1 class="text-6xl md:text-8xl font-bold mb-6">
+                    <span class="bg-gradient-to-r from-primary-600 via-accent-500 to-purple-600 bg-clip-text text-transparent bg-300% animate-gradient" data-i18n="appName">
+                        HabitLog
+                    </span>
+                </h1>
+                <p class="text-2xl md:text-4xl text-gray-700 dark:text-gray-300 mb-4 animate-slide-up" data-i18n="planTrackAchieve">
+                    Plan. Track. Achieve.
+                </p>
+                <p class="text-xl text-gray-600 dark:text-gray-400 mb-12 max-w-2xl mx-auto animate-fade-in" data-i18n="quote">
+                    "Track your habits. Build your streak. Transform your life."
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-16 animate-fade-in">
+                <div class="glass-effect p-6 rounded-2xl hover:shadow-xl transition-all duration-300 transform hover:scale-105 hover:rotate-1">
+                    <div class="text-4xl mb-4 animate-float">📊</div>
+                    <h3 class="text-xl font-semibold mb-2 dark:text-white" data-i18n="smartTracking">Smart Tracking</h3>
+                    <p class="text-gray-600 dark:text-gray-400" data-i18n="smartTrackingDesc">Intelligent habit tracking with streak calculations</p>
+                </div>
+                <div class="glass-effect p-6 rounded-2xl hover:shadow-xl transition-all duration-300 transform hover:scale-105 hover:rotate-1">
+                    <div class="text-4xl mb-4 animate-float" style="animation-delay: 0.2s">📈</div>
+                    <h3 class="text-xl font-semibold mb-2 dark:text-white" data-i18n="visualProgress">Visual Progress</h3>
+                    <p class="text-gray-600 dark:text-gray-400" data-i18n="visualProgressDesc">Beautiful charts and heatmaps to visualize your journey</p>
+                </div>
+                <div class="glass-effect p-6 rounded-2xl hover:shadow-xl transition-all duration-300 transform hover:scale-105 hover:rotate-1">
+                    <div class="text-4xl mb-4 animate-float" style="animation-delay: 0.4s">🏆</div>
+                    <h3 class="text-xl font-semibold mb-2 dark:text-white" data-i18n="rewardSystem">Reward System</h3>
+                    <p class="text-gray-600 dark:text-gray-400" data-i18n="rewardSystemDesc">Earn stars, badges, and status as you build streaks</p>
+                </div>
+            </div>
+
+            <div class="mt-12">
+                <button id="exploreBtn" class="px-8 py-4 bg-gradient-to-r from-primary-600 to-accent-500 text-white text-lg rounded-full hover:shadow-2xl transition-all duration-300 transform hover:scale-110 animate-bounce-slow" data-i18n="startJourney">
+                    Start Your Journey
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Sign Up Modal with Date of Birth - REMOVED LANGUAGE SELECTION -->
+    <div id="signupModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-md w-full mx-4 transform transition-all duration-300 modal-enter">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold dark:text-white" data-i18n="joinHabitLog">Join HabitLog</h2>
+                <button id="closeModalBtn" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <form id="signupForm">
+                <div class="mb-4">
+                    <label class="block text-gray-700 dark:text-gray-300 mb-2" data-i18n="username">Username</label>
+                    <input type="text" id="username" required 
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white transition-all duration-300"
+                           data-i18n="username" placeholder="Enter your username">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700 dark:text-gray-300 mb-2" data-i18n="email">Email</label>
+                    <input type="email" id="email" required 
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white transition-all duration-300"
+                           data-i18n="email" placeholder="Enter your email">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700 dark:text-gray-300 mb-2" data-i18n="dateOfBirth">Date of Birth</label>
+                    <input type="date" id="dob" required 
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white transition-all duration-300"
+                           max="2024-12-31" min="1900-01-01">
+                </div>
+                <div class="mb-6">
+                    <label class="block text-gray-700 dark:text-gray-300 mb-2" data-i18n="password">Password</label>
+                    <input type="password" id="password" required 
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white transition-all duration-300"
+                           data-i18n="password" placeholder="Choose a password (min. 6 characters)">
+                </div>
+                <button type="submit" id="signupSubmitBtn" 
+                        class="w-full py-3 bg-gradient-to-r from-primary-600 to-accent-500 text-white rounded-lg hover:shadow-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105"
+                        data-i18n="signUp">
+                    Sign Up
+                </button>
+            </form>
+            
+            <p class="mt-4 text-center text-gray-600 dark:text-gray-400">
+                <span data-i18n="alreadyHaveAccount">Already have an account?</span> 
+                <button id="showLoginBtn" class="text-primary-600 dark:text-primary-400 hover:underline transition-colors" data-i18n="login">
+                    Login
+                </button>
+            </p>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-md w-full mx-4 transform transition-all duration-300 modal-enter">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold dark:text-white" data-i18n="welcomeBack">Welcome Back!</h2>
+                <button id="closeLoginModalBtn" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <form id="loginForm">
+                <div class="mb-4">
+                    <label class="block text-gray-700 dark:text-gray-300 mb-2" data-i18n="email">Email</label>
+                    <input type="email" id="loginEmail" required 
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white transition-all duration-300"
+                           data-i18n="email" placeholder="Enter your email">
+                </div>
+                <div class="mb-6">
+                    <label class="block text-gray-700 dark:text-gray-300 mb-2" data-i18n="password">Password</label>
+                    <input type="password" id="loginPassword" required 
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white transition-all duration-300"
+                           data-i18n="password" placeholder="Enter your password">
+                </div>
+                <button type="submit" id="loginSubmitBtn" 
+                        class="w-full py-3 bg-gradient-to-r from-primary-600 to-accent-500 text-white rounded-lg hover:shadow-lg transition-all duration-300 disabled:opacity-50 transform hover:scale-105"
+                        data-i18n="login">
+                    Login
+                </button>
+            </form>
+            
+            <p class="mt-4 text-center text-gray-600 dark:text-gray-400">
+                <span data-i18n="dontHaveAccount">Don't have an account?</span> 
+                <button id="showSignupFromLoginBtn" class="text-primary-600 dark:text-primary-400 hover:underline transition-colors" data-i18n="signUp">
+                    Sign up
+                </button>
+            </p>
+        </div>
+    </div>
+
+    <script>
+    // Mobile Menu Toggle
+    document.addEventListener('DOMContentLoaded', function() {
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const mobileMenu = document.getElementById('mobileMenu');
+        
+        if (mobileMenuBtn && mobileMenu) {
+            mobileMenuBtn.addEventListener('click', function() {
+                // Toggle menu
+                if (mobileMenu.style.maxHeight === '0px' || mobileMenu.style.maxHeight === '') {
+                    mobileMenu.style.maxHeight = '400px';
+                    mobileMenu.style.opacity = '1';
+                    mobileMenuBtn.innerHTML = '<i class="fas fa-times text-lg sm:text-xl"></i>';
+                } else {
+                    mobileMenu.style.maxHeight = '0px';
+                    mobileMenu.style.opacity = '0';
+                    mobileMenuBtn.innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                }
+            });
+
+            // Close menu when clicking outside
+            document.addEventListener('click', function(event) {
+                if (!mobileMenu.contains(event.target) && !mobileMenuBtn.contains(event.target)) {
+                    mobileMenu.style.maxHeight = '0px';
+                    mobileMenu.style.opacity = '0';
+                    mobileMenuBtn.innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                }
+            });
+
+            // Close menu on window resize (if switching to desktop)
+            window.addEventListener('resize', function() {
+                if (window.innerWidth >= 768) {
+                    mobileMenu.style.maxHeight = '0px';
+                    mobileMenu.style.opacity = '0';
+                    if (mobileMenuBtn) {
+                        mobileMenuBtn.innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                    }
+                }
+            });
+        }
+
+        // Sync signup buttons
+        const showSignupBtn = document.getElementById('showSignupBtn');
+        const mobileSignupBtn = document.getElementById('mobileSignupBtn');
+        
+        if (showSignupBtn && mobileSignupBtn) {
+            showSignupBtn.addEventListener('click', function() {
+                // Your signup logic
+                document.getElementById('signupModal')?.classList.remove('hidden');
+            });
+            
+            mobileSignupBtn.addEventListener('click', function() {
+                // Close mobile menu and open signup
+                mobileMenu.style.maxHeight = '0px';
+                mobileMenu.style.opacity = '0';
+                document.getElementById('mobileMenuBtn').innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                document.getElementById('signupModal')?.classList.remove('hidden');
+            });
+        }
+    });
+        // Theme Toggle
+        const themeToggle = document.getElementById('themeToggle');
+        const html = document.documentElement;
+        
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark') html.classList.add('dark');
+        else if (savedTheme === 'light') html.classList.remove('dark');
+        else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            html.classList.add('dark');
+            localStorage.setItem('theme', 'dark');
+        }
+
+        themeToggle.addEventListener('click', () => {
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+        });
+
+        // Toast functions
+        function showError(message) {
+            const errorToast = document.getElementById('errorToast');
+            document.getElementById('errorMessage').textContent = message;
+            errorToast.classList.remove('hidden');
+            setTimeout(() => errorToast.classList.add('hidden'), 5000);
+        }
+
+        function hideErrorToast() {
+            document.getElementById('errorToast').classList.add('hidden');
+        }
+
+        function showSuccess(message) {
+            const successToast = document.getElementById('successToast');
+            document.getElementById('successMessage').textContent = message;
+            successToast.classList.remove('hidden');
+            setTimeout(() => successToast.classList.add('hidden'), 3000);
+        }
+
+        function hideSuccessToast() {
+            document.getElementById('successToast').classList.add('hidden');
+        }
+
+        function showLoading() {
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+            document.getElementById('loadingOverlay').classList.add('flex');
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+            document.getElementById('loadingOverlay').classList.remove('flex');
+        }
+
+        // Function to calculate age from date of birth
+        function calculateAge(dob) {
+            const birthDate = new Date(dob);
+            const today = new Date();
+            
+            let age = today.getFullYear() - birthDate.getFullYear();
+            const monthDiff = today.getMonth() - birthDate.getMonth();
+            
+            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                age--;
+            }
+            
+            return age;
+        }
+
+        // Modal handling
+        const signupModal = document.getElementById('signupModal');
+        const loginModal = document.getElementById('loginModal');
+        const showSignupBtn = document.getElementById('showSignupBtn');
+        const showLoginBtn = document.getElementById('showLoginBtn');
+        const showSignupFromLoginBtn = document.getElementById('showSignupFromLoginBtn');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const closeLoginModalBtn = document.getElementById('closeLoginModalBtn');
+        const exploreBtn = document.getElementById('exploreBtn');
+
+        function showModal(modal) {
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function hideModal(modal) {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.style.overflow = 'auto';
+        }
+
+        showSignupBtn.addEventListener('click', () => showModal(signupModal));
+        exploreBtn.addEventListener('click', () => showModal(signupModal));
+        
+        // Show login from signup modal
+        showLoginBtn.addEventListener('click', () => {
+            hideModal(signupModal);
+            showModal(loginModal);
+        });
+
+        // Show signup from login modal
+        showSignupFromLoginBtn.addEventListener('click', () => {
+            hideModal(loginModal);
+            showModal(signupModal);
+        });
+
+        closeModalBtn.addEventListener('click', () => hideModal(signupModal));
+        closeLoginModalBtn.addEventListener('click', () => hideModal(loginModal));
+
+        window.addEventListener('click', (e) => {
+            if (e.target === signupModal) hideModal(signupModal);
+            if (e.target === loginModal) hideModal(loginModal);
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (!signupModal.classList.contains('hidden')) hideModal(signupModal);
+                if (!loginModal.classList.contains('hidden')) hideModal(loginModal);
+            }
+        });
+
+        // API calls
+        async function apiCall(url, options = {}, retries = 3) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 10000);
+                    
+                    const response = await fetch(url, {
+                        ...options,
+                        signal: controller.signal,
+                        headers: { 'Content-Type': 'application/json', ...options.headers },
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                    }
+                    
+                    return await response.json();
+                } catch (error) {
+                    console.error(`API call attempt ${i + 1} failed:`, error);
+                    if (i === retries - 1) throw error;
+                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+                }
+            }
+        }
+
+        // Signup form submission - UPDATED with DOB (REMOVED language)
+        document.getElementById('signupForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('signupSubmitBtn');
+            submitBtn.disabled = true;
+            showLoading();
+            
+            const dob = document.getElementById('dob').value;
+            const age = calculateAge(dob);
+            
+            // Default language to English
+            const defaultLanguage = 'english';
+            
+            const userData = {
+                username: document.getElementById('username').value.trim(),
+                email: document.getElementById('email').value.trim(),
+                age: age,
+                dob: dob,
+                language: defaultLanguage, // Always set to English by default
+                password: document.getElementById('password').value
+            };
+
+            if (!userData.username || !userData.email || !dob || !userData.password) {
+                hideLoading(); submitBtn.disabled = false; showError('Please fill in all fields'); return;
+            }
+
+            if (userData.password.length < 6) {
+                hideLoading(); submitBtn.disabled = false; showError('Password must be at least 6 characters long'); return;
+            }
+
+            if (age < 1 || age > 120) {
+                hideLoading(); submitBtn.disabled = false; showError('Please enter a valid date of birth'); return;
+            }
+
+            try {
+                const data = await apiCall('/api/auth/signup', {
+                    method: 'POST',
+                    body: JSON.stringify(userData)
+                });
+
+                if (data.user) {
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    // Set default language preference
+                    localStorage.setItem('language', defaultLanguage);
+                }
+
+                hideLoading();
+                submitBtn.disabled = false;
+                hideModal(signupModal);
+                
+                // Categorize user based on age
+                let category = '';
+                if (age < 13) category = 'Child';
+                else if (age >= 13 && age < 20) category = 'Teen';
+                else if (age >= 20 && age < 60) category = 'Adult';
+                else category = 'Senior Citizen';
+                
+                showSuccess(`Welcome ${userData.username}! You've been categorized as a ${category}. Redirecting...`);
+                
+                setTimeout(() => window.location.href = '/dashboard', 2000);
+            } catch (error) {
+                hideLoading(); submitBtn.disabled = false;
+                if (error.name === 'AbortError') showError('Request timeout. Please check your connection.');
+                else if (error.message.includes('Failed to fetch')) showError('Cannot connect to server. Please ensure the server is running.');
+                else if (error.message.includes('already exists')) {
+                    showError('An account with this email already exists. Please login instead.');
+                    setTimeout(() => { hideModal(signupModal); showModal(loginModal); }, 2000);
+                } else showError(error.message || 'Signup failed. Please try again.');
+            }
+        });
+
+        // Login form submission
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('loginSubmitBtn');
+            submitBtn.disabled = true;
+            showLoading();
+            
+            const credentials = {
+                email: document.getElementById('loginEmail').value.trim(),
+                password: document.getElementById('loginPassword').value
+            };
+
+            if (!credentials.email || !credentials.password) {
+                hideLoading(); submitBtn.disabled = false; showError('Please fill in all fields'); return;
+            }
+
+            try {
+                const data = await apiCall('/api/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify(credentials)
+                });
+
+                if (data.user) {
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    // Save language preference from user data (defaults to English)
+                    if (data.user.language) {
+                        localStorage.setItem('language', data.user.language);
+                    } else {
+                        localStorage.setItem('language', 'english');
+                    }
+                    
+                    showSuccess(`Welcome back! Redirecting to dashboard...`);
+                }
+
+                hideLoading(); submitBtn.disabled = false; hideModal(loginModal);
+                setTimeout(() => window.location.href = '/dashboard', 1500);
+            } catch (error) {
+                hideLoading(); submitBtn.disabled = false;
+                if (error.name === 'AbortError') showError('Request timeout. Please check your connection.');
+                else if (error.message.includes('Failed to fetch')) showError('Cannot connect to server. Please ensure the server is running.');
+                else showError(error.message || 'Login failed. Please check your credentials.');
+            }
+        });
+
+        // Check server health
+        async function checkServerHealth() {
+            try {
+                const response = await fetch('/api/health', { method: 'HEAD' }).catch(() => null);
+                if (!response) console.warn('Server health check failed');
+            } catch (error) {
+                console.warn('Server health check failed:', error);
+            }
+        }
+
+        checkServerHealth();
+
+        function clearForm(formId) {
+            const form = document.getElementById(formId);
+            if (form) form.reset();
+        }
+
+        const originalHideModal = hideModal;
+        window.hideModal = function(modal) {
+            if (modal === signupModal) clearForm('signupForm');
+            if (modal === loginModal) clearForm('loginForm');
+            originalHideModal(modal);
+        };
+
+        // Apply language on page load (default to English)
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedLang = localStorage.getItem('language') || 'english';
+            if (window.setLanguage) {
+                window.setLanguage(savedLang);
+            }
+        });
+    </script>
+</body>
+</html>
