@@ -4,7 +4,7 @@
   "description": "Personal habit tracker with streak system, AI chatbot, and multi-language support",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+   "start": "node -r dotenv/config server.js",
     "dev": "nodemon server.js",
     "build-css": "tailwindcss -i ./public/css/style.css -o ./public/css/output.css --watch"
   },
@@ -27,3 +27,4 @@
   "license": "ISC",
   "type": "commonjs"
 }
+
