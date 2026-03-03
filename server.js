@@ -24,7 +24,14 @@ if (!fs.existsSync(usersFilePath)) {
 }
 
 // Middleware
-app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
+const corsOptions = {
+    origin: process.env.NODE_ENV === 'production' 
+        ? [process.env.FRONTEND_URL || true] // Allow your deployed domain
+        : 'http://localhost:3000',
+    credentials: true,
+    optionsSuccessStatus: 200
+};
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -34,15 +41,33 @@ app.use(session({
     secret: process.env.SESSION_SECRET || 'habitlog-secret-key-2024',
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 24 * 60 * 60 * 1000 }
+    cookie: { 
+        secure: process.env.NODE_ENV === 'production', // true in production (HTTPS)
+        httpOnly: true, 
+        maxAge: 24 * 60 * 60 * 1000,
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Important for cross-site
+        domain: process.env.NODE_ENV === 'production' ? process.env.COOKIE_DOMAIN : undefined
+    }
 }));
+if (process.env.NODE_ENV === 'production') {
+    app.set('trust proxy', 1); // Trust first proxy
+}
+// Add after your other requires
+if (process.env.NODE_ENV === 'production') {
+    // Force HTTPS redirect
+    app.use((req, res, next) => {
+        if (req.headers['x-forwarded-proto'] !== 'https') {
+            return res.redirect(`https://${req.headers.host}${req.url}`);
+        }
+        next();
+    });
+}
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString(), server: 'HabitLog' });
 });
 
-// =========== AUTH ROUTES ===========
 // =========== AUTH ROUTES ===========
 app.post('/api/auth/signup', async (req, res) => {
     try {
@@ -148,18 +173,28 @@ app.post('/api/auth/login', async (req, res) => {
             language: user.settings.language
         };
         
-        res.json({ 
-            message: 'Login successful', 
-            user: {
-                id: user.id,
-                username: user.username,
-                email: user.email,
-                age: user.age,
-                category: user.category,
-                language: user.settings.language,
-                rewards: user.rewards,
-                streakFreezes: user.streakFreezes
+        // Save session explicitly - THIS IS THE KEY CHANGE
+        req.session.save((err) => {
+            if (err) {
+                console.error('Session save error:', err);
+                return res.status(500).json({ error: 'Session error' });
             }
+            
+            console.log('Session saved successfully for user:', user.email);
+            
+            res.json({ 
+                message: 'Login successful', 
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    age: user.age,
+                    category: user.category,
+                    language: user.settings.language,
+                    rewards: user.rewards,
+                    streakFreezes: user.streakFreezes
+                }
+            });
         });
     } catch (error) {
         console.error('Login error:', error);
