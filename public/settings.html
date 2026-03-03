@@ -578,169 +578,216 @@
         await saveSettings({ reminderTime });
         showSuccess('Reminder time updated');
     });
-
-    // Download progress function
-    async function downloadProgress(format) {
-        try {
-            showLoading();
+// Download progress function
+async function downloadProgress(format) {
+    try {
+        showLoading();
+        
+        if (format === 'pdf') {
+            const response = await fetch('/api/habits');
+            const habits = await response.json();
             
-            if (format === 'pdf') {
-                const response = await fetch('/api/habits');
-                const habits = await response.json();
-                
-                const userResponse = await fetch('/api/user');
-                const userData = await userResponse.json();
-                
-                const { jsPDF } = window.jspdf;
-                const doc = new jsPDF();
-                
-                doc.setProperties({
-                    title: 'HabitLog Progress Report',
-                    subject: 'Habit Tracking Data',
-                    author: userData.username,
-                    creator: 'HabitLog'
-                });
-                
-                doc.setFontSize(22);
-                doc.setTextColor(79, 70, 229);
-                doc.text('HabitLog Progress Report', 20, 20);
-                
-                doc.setFontSize(10);
-                doc.setTextColor(100, 100, 100);
-                const today = new Date();
-                const dateStr = today.toLocaleDateString('en-US', { 
-                    year: 'numeric', 
-                    month: 'long', 
-                    day: 'numeric' 
-                });
-                doc.text(`Generated: ${dateStr}`, 20, 30);
-                
-                doc.setFontSize(12);
-                doc.setTextColor(0, 0, 0);
-                doc.text(`User: ${userData.username}`, 20, 40);
-                if (userData.age) {
-                    doc.text(`Age: ${userData.age}`, 20, 47);
-                }
-                
-                const today_date = new Date().toISOString().split('T')[0];
-                const completedToday = habits.filter(h => h.completedDates?.includes(today_date)).length;
-                const totalStreak = habits.reduce((sum, h) => sum + (h.streak || 0), 0);
-                
-                doc.text(`Current Streak: ${totalStreak} days`, 20, 54);
-                doc.text(`Completed Today: ${completedToday} habits`, 20, 61);
-                
-                doc.setFontSize(16);
-                doc.setTextColor(79, 70, 229);
-                doc.text('Habit Summary', 20, 75);
-                
-                const tableData = habits.map(habit => [
-                    habit.name,
-                    habit.streak?.toString() || '0',
-                    habit.longestStreak?.toString() || '0',
-                    (habit.completedDates?.length || 0).toString(),
-                    habit.completedDates?.includes(today_date) ? '✓' : '✗'
-                ]);
-                
-                doc.autoTable({
-                    startY: 80,
-                    head: [['Habit Name', 'Current Streak', 'Longest Streak', 'Total Completions', 'Today']],
-                    body: tableData,
-                    theme: 'grid',
-                    headStyles: {
-                        fillColor: [79, 70, 229],
-                        textColor: [255, 255, 255],
-                        fontStyle: 'bold'
-                    },
-                    alternateRowStyles: {
-                        fillColor: [240, 240, 240]
-                    },
-                    styles: {
-                        fontSize: 10,
-                        cellPadding: 5
-                    }
-                });
-                
-                const finalY = doc.lastAutoTable.finalY || 150;
-                
-                const badges = [];
-                habits.forEach(habit => {
-                    if (habit.streak >= 7) badges.push('7-Day Streak');
-                    if (habit.streak >= 30) badges.push('Monthly Master');
-                    if (habit.longestStreak >= 100) badges.push('Century Club');
-                });
-                
-                if (badges.length > 0) {
-                    doc.setFontSize(16);
-                    doc.setTextColor(79, 70, 229);
-                    doc.text('Achievements', 20, finalY + 15);
-                    
-                    doc.setFontSize(10);
-                    doc.setTextColor(0, 0, 0);
-                    let yPos = finalY + 25;
-                    badges.forEach((badge, index) => {
-                        doc.text(`🏆 ${badge}`, 25, yPos + (index * 7));
-                    });
-                }
-                
-                const totalCompletions = habits.reduce((sum, h) => sum + (h.completedDates?.length || 0), 0);
-                const uniqueDays = new Set();
-                habits.forEach(h => {
-                    h.completedDates?.forEach(date => uniqueDays.add(date));
-                });
-                
-                const statsY = finalY + (badges.length > 0 ? 45 : 25);
-                
-                doc.setFontSize(16);
-                doc.setTextColor(79, 70, 229);
-                doc.text('Statistics', 20, statsY);
-                
-                doc.setFontSize(10);
-                doc.setTextColor(0, 0, 0);
-                doc.text(`Total Habits: ${habits.length}`, 25, statsY + 10);
-                doc.text(`Total Completions: ${totalCompletions}`, 25, statsY + 17);
-                doc.text(`Active Days: ${uniqueDays.size}`, 25, statsY + 24);
-                
-                const pageCount = doc.internal.getNumberOfPages();
-                for (let i = 1; i <= pageCount; i++) {
-                    doc.setPage(i);
-                    doc.setFontSize(8);
-                    doc.setTextColor(150, 150, 150);
-                    doc.text(
-                        `HabitLog - Track your habits, build your streak - Page ${i} of ${pageCount}`,
-                        20,
-                        doc.internal.pageSize.height - 10
-                    );
-                }
-                
-                doc.save(`habitlog-report-${new Date().toISOString().split('T')[0]}.pdf`);
-                
-            } else {
-                const response = await fetch('/api/habits');
-                const habits = await response.json();
-                
-                let csv = 'Habit Name,Current Streak,Longest Streak,Total Completions\n';
-                habits.forEach(habit => {
-                    csv += `${habit.name},${habit.streak || 0},${habit.longestStreak || 0},${habit.completedDates?.length || 0}\n`;
-                });
-                
-                const blob = new Blob([csv], { type: 'text/csv' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `habitlog-data-${new Date().toISOString().split('T')[0]}.csv`;
-                a.click();
-                window.URL.revokeObjectURL(url);
+            const userResponse = await fetch('/api/user');
+            const userData = await userResponse.json();
+            
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            doc.setProperties({
+                title: 'HabitLog Progress Report',
+                subject: 'Habit Tracking Data',
+                author: userData.username,
+                creator: 'HabitLog'
+            });
+            
+            doc.setFontSize(22);
+            doc.setTextColor(79, 70, 229);
+            doc.text('HabitLog Progress Report', 20, 20);
+            
+            doc.setFontSize(10);
+            doc.setTextColor(100, 100, 100);
+            const today = new Date();
+            const dateStr = today.toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+            doc.text(`Generated: ${dateStr}`, 20, 30);
+            
+            doc.setFontSize(12);
+            doc.setTextColor(0, 0, 0);
+            doc.text(`User: ${userData.username}`, 20, 40);
+            if (userData.age) {
+                doc.text(`Age: ${userData.age}`, 20, 47);
             }
             
-            hideLoading();
-            showSuccess('Download successful!');
+            const today_date = new Date().toISOString().split('T')[0];
+            const completedToday = habits.filter(h => h.completedDates?.includes(today_date)).length;
             
-        } catch (error) {
-            hideLoading();
-            console.error('Error downloading data:', error);
-            showError('Failed to download');
+            // OPTION 1: Show the longest personal streak (best performing habit)
+            const longestPersonalStreak = Math.max(...habits.map(h => h.streak || 0), 0);
+            
+            // OPTION 2: Calculate overall streak (completed at least one habit every day)
+            // This is more complex - let's implement it properly
+            const overallStreak = calculateOverallStreak(habits);
+            
+            doc.text(`Current Longest Streak: ${longestPersonalStreak} days`, 20, 54);
+            doc.text(`Overall Streak: ${overallStreak} days`, 20, 61);
+            doc.text(`Completed Today: ${completedToday} habits`, 20, 68);
+            
+            doc.setFontSize(16);
+            doc.setTextColor(79, 70, 229);
+            doc.text('Habit Summary', 20, 82);
+            
+            const tableData = habits.map(habit => [
+                habit.name,
+                habit.streak?.toString() || '0',
+                habit.longestStreak?.toString() || '0',
+                (habit.completedDates?.length || 0).toString(),
+                habit.completedDates?.includes(today_date) ? '✓' : '✗'
+            ]);
+            
+            doc.autoTable({
+                startY: 87,
+                head: [['Habit Name', 'Current Streak', 'Longest Streak', 'Total Completions', 'Today']],
+                body: tableData,
+                theme: 'grid',
+                headStyles: {
+                    fillColor: [79, 70, 229],
+                    textColor: [255, 255, 255],
+                    fontStyle: 'bold'
+                },
+                alternateRowStyles: {
+                    fillColor: [240, 240, 240]
+                },
+                styles: {
+                    fontSize: 10,
+                    cellPadding: 5
+                }
+            });
+            
+            const finalY = doc.lastAutoTable.finalY || 150;
+            
+            const badges = [];
+            habits.forEach(habit => {
+                if (habit.streak >= 7) badges.push(`${habit.name}: 7-Day Streak`);
+                if (habit.streak >= 30) badges.push(`${habit.name}: Monthly Master`);
+                if (habit.longestStreak >= 100) badges.push(`${habit.name}: Century Club`);
+            });
+            
+            if (badges.length > 0) {
+                doc.setFontSize(16);
+                doc.setTextColor(79, 70, 229);
+                doc.text('Achievements', 20, finalY + 15);
+                
+                doc.setFontSize(10);
+                doc.setTextColor(0, 0, 0);
+                let yPos = finalY + 25;
+                badges.forEach((badge, index) => {
+                    doc.text(`🏆 ${badge}`, 25, yPos + (index * 7));
+                });
+            }
+            
+            const totalCompletions = habits.reduce((sum, h) => sum + (h.completedDates?.length || 0), 0);
+            const uniqueDays = new Set();
+            habits.forEach(h => {
+                h.completedDates?.forEach(date => uniqueDays.add(date));
+            });
+            
+            const statsY = finalY + (badges.length > 0 ? 45 : 25);
+            
+            doc.setFontSize(16);
+            doc.setTextColor(79, 70, 229);
+            doc.text('Statistics', 20, statsY);
+            
+            doc.setFontSize(10);
+            doc.setTextColor(0, 0, 0);
+            doc.text(`Total Habits: ${habits.length}`, 25, statsY + 10);
+            doc.text(`Total Completions: ${totalCompletions}`, 25, statsY + 17);
+            doc.text(`Active Days: ${uniqueDays.size}`, 25, statsY + 24);
+            
+            // Add best habit info
+            const bestHabit = habits.reduce((best, habit) => 
+                (habit.streak || 0) > (best?.streak || 0) ? habit : best, habits[0]);
+            
+            if (bestHabit) {
+                doc.text(`Best Habit: ${bestHabit.name} (${bestHabit.streak} days)`, 25, statsY + 31);
+            }
+            
+            const pageCount = doc.internal.getNumberOfPages();
+            for (let i = 1; i <= pageCount; i++) {
+                doc.setPage(i);
+                doc.setFontSize(8);
+                doc.setTextColor(150, 150, 150);
+                doc.text(
+                    `HabitLog - Track your habits, build your streak - Page ${i} of ${pageCount}`,
+                    20,
+                    doc.internal.pageSize.height - 10
+                );
+            }
+            
+            doc.save(`habitlog-report-${new Date().toISOString().split('T')[0]}.pdf`);
+            
+        } else {
+            const response = await fetch('/api/habits');
+            const habits = await response.json();
+            
+            let csv = 'Habit Name,Current Streak,Longest Streak,Total Completions\n';
+            habits.forEach(habit => {
+                csv += `${habit.name},${habit.streak || 0},${habit.longestStreak || 0},${habit.completedDates?.length || 0}\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `habitlog-data-${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
         }
+        
+        hideLoading();
+        showSuccess('Download successful!');
+        
+    } catch (error) {
+        hideLoading();
+        console.error('Error downloading data:', error);
+        showError('Failed to download');
     }
+}
+
+// Helper function to calculate overall streak (completed at least one habit per day)
+function calculateOverallStreak(habits) {
+    if (!habits.length) return 0;
+    
+    // Get all unique dates when at least one habit was completed
+    const completionDates = new Set();
+    habits.forEach(habit => {
+        habit.completedDates?.forEach(date => completionDates.add(date));
+    });
+    
+    // Convert to array and sort
+    const sortedDates = Array.from(completionDates).sort();
+    if (sortedDates.length === 0) return 0;
+    
+    // Check if today is completed (at least one habit)
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    
+    // If no completion today, streak is 0
+    if (!completionDates.has(today)) return 0;
+    
+    // Calculate consecutive days
+    let streak = 1;
+    let currentDate = yesterday;
+    
+    while (completionDates.has(currentDate)) {
+        streak++;
+        currentDate = new Date(new Date(currentDate).getTime() - 86400000).toISOString().split('T')[0];
+    }
+    
+    return streak;
+}
 
     // Clear all data
     async function clearAllData() {
