@@ -63,6 +63,167 @@ if (process.env.NODE_ENV === 'production') {
     });
 }
 
+// =========== STREAK CALCULATION FUNCTIONS ===========
+
+/**
+ * Calculate current streak for a habit
+ * Returns the number of consecutive days the habit has been completed up to today
+ */
+function calculateHabitStreak(habit) {
+    if (!habit.completedDates || habit.completedDates.length === 0) {
+        return 0;
+    }
+    
+    // Sort dates in descending order (newest first)
+    const sortedDates = [...habit.completedDates].sort().reverse();
+    const today = new Date().toISOString().split('T')[0];
+    
+    // If not completed today, streak is 0 (unless we implement streak freezes)
+    if (!sortedDates.includes(today)) {
+        return 0;
+    }
+    
+    let streak = 1; // Started with today
+    let currentDate = today;
+    
+    // Count consecutive days backwards
+    while (true) {
+        // Move to previous day
+        const prevDate = new Date(currentDate);
+        prevDate.setDate(prevDate.getDate() - 1);
+        currentDate = prevDate.toISOString().split('T')[0];
+        
+        if (sortedDates.includes(currentDate)) {
+            streak++;
+        } else {
+            break;
+        }
+    }
+    
+    return streak;
+}
+
+/**
+ * Calculate longest streak for a habit
+ * Returns the maximum number of consecutive days the habit has ever been completed
+ */
+function calculateLongestStreak(habit) {
+    if (!habit.completedDates || habit.completedDates.length === 0) {
+        return 0;
+    }
+    
+    // Sort dates in ascending order
+    const sortedDates = [...habit.completedDates].sort();
+    
+    let longestStreak = 0;
+    let currentStreak = 1;
+    let lastDate = sortedDates[0];
+    
+    for (let i = 1; i < sortedDates.length; i++) {
+        const currentDate = sortedDates[i];
+        
+        // Calculate days between dates
+        const prev = new Date(lastDate);
+        const curr = new Date(currentDate);
+        const diffDays = Math.round((curr - prev) / (1000 * 60 * 60 * 24));
+        
+        if (diffDays === 1) {
+            // Consecutive day
+            currentStreak++;
+        } else if (diffDays > 1) {
+            // Gap detected, reset streak
+            longestStreak = Math.max(longestStreak, currentStreak);
+            currentStreak = 1;
+        }
+        // If diffDays === 0, it's the same day (shouldn't happen with proper data)
+        
+        lastDate = currentDate;
+    }
+    
+    // Check final streak
+    longestStreak = Math.max(longestStreak, currentStreak);
+    
+    return longestStreak;
+}
+
+/**
+ * Calculate overall user streak (days with at least one habit completed)
+ */
+function calculateOverallStreak(user) {
+    if (!user.habits || user.habits.length === 0) {
+        return 0;
+    }
+    
+    // Get all unique completion dates across all habits
+    const completionDates = new Set();
+    user.habits.forEach(habit => {
+        if (habit.completedDates && Array.isArray(habit.completedDates)) {
+            habit.completedDates.forEach(date => {
+                completionDates.add(date);
+            });
+        }
+    });
+    
+    const sortedDates = Array.from(completionDates).sort().reverse();
+    const today = new Date().toISOString().split('T')[0];
+    
+    // If no completion today, streak is 0
+    if (!sortedDates.includes(today)) {
+        return 0;
+    }
+    
+    let streak = 1;
+    let currentDate = today;
+    
+    while (true) {
+        const prevDate = new Date(currentDate);
+        prevDate.setDate(prevDate.getDate() - 1);
+        currentDate = prevDate.toISOString().split('T')[0];
+        
+        if (sortedDates.includes(currentDate)) {
+            streak++;
+        } else {
+            break;
+        }
+    }
+    
+    return streak;
+}
+
+/**
+ * Recalculate all streaks for a user
+ * This ensures streak data is always consistent
+ */
+function recalculateAllStreaks(user) {
+    if (!user.habits) return user;
+    
+    let overallLongestStreak = 0;
+    
+    user.habits.forEach(habit => {
+        // Calculate current streak
+        habit.streak = calculateHabitStreak(habit);
+        
+        // Calculate longest streak
+        const longest = calculateLongestStreak(habit);
+        habit.longestStreak = Math.max(habit.longestStreak || 0, longest);
+        
+        // Track overall longest streak for user status
+        overallLongestStreak = Math.max(overallLongestStreak, habit.longestStreak);
+    });
+    
+    // Update user status based on longest streak
+    if (user.rewards) {
+        if (overallLongestStreak >= 365) user.rewards.status = 'legend';
+        else if (overallLongestStreak >= 100) user.rewards.status = 'master';
+        else if (overallLongestStreak >= 50) user.rewards.status = 'expert';
+        else if (overallLongestStreak >= 30) user.rewards.status = 'advanced';
+        else if (overallLongestStreak >= 7) user.rewards.status = 'star';
+        else user.rewards.status = 'beginner';
+    }
+    
+    return user;
+}
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString(), server: 'HabitLog' });
@@ -104,7 +265,8 @@ app.post('/api/auth/signup', async (req, res) => {
                 available: 0,
                 used: 0,
                 history: [],
-                appliedDays: []
+                appliedDays: [],
+                awardedStreaks: []
             },
             settings: {
                 theme: 'light',
@@ -149,6 +311,7 @@ app.post('/api/auth/signup', async (req, res) => {
         res.status(500).json({ error: 'Server error during signup' });
     }
 });
+
 app.post('/api/auth/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -159,41 +322,43 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
         
+        // FIX: Recalculate all streaks on login to ensure data consistency
+        const updatedUser = recalculateAllStreaks(user);
+        
         // Update last login
-        user.lastLogin = new Date().toISOString();
+        updatedUser.lastLogin = new Date().toISOString();
+        
+        // Save the updated user back to the array
+        const userIndex = users.findIndex(u => u.id === user.id);
+        users[userIndex] = updatedUser;
+        
         fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
         
-        req.session.userId = user.id;
+        req.session.userId = updatedUser.id;
         req.session.user = { 
-            id: user.id, 
-            username: user.username, 
-            email: user.email,
-            age: user.age,
-            category: user.category,
-            language: user.settings.language
+            id: updatedUser.id, 
+            username: updatedUser.username, 
+            email: updatedUser.email,
+            age: updatedUser.age,
+            category: updatedUser.category,
+            language: updatedUser.settings.language
         };
         
-        // Save session explicitly - THIS IS THE KEY CHANGE
+        // Save session explicitly
         req.session.save((err) => {
             if (err) {
                 console.error('Session save error:', err);
                 return res.status(500).json({ error: 'Session error' });
             }
             
-            console.log('Session saved successfully for user:', user.email);
+            console.log('Session saved successfully for user:', updatedUser.email);
+            
+            // Remove sensitive information
+            const { password, ...userWithoutPassword } = updatedUser;
             
             res.json({ 
                 message: 'Login successful', 
-                user: {
-                    id: user.id,
-                    username: user.username,
-                    email: user.email,
-                    age: user.age,
-                    category: user.category,
-                    language: user.settings.language,
-                    rewards: user.rewards,
-                    streakFreezes: user.streakFreezes
-                }
+                user: userWithoutPassword
             });
         });
     } catch (error) {
@@ -215,14 +380,19 @@ app.get('/api/user', (req, res) => {
     
     try {
         const users = JSON.parse(fs.readFileSync(usersFilePath, 'utf8'));
-        const user = users.find(u => u.id === req.session.userId);
+        const userIndex = users.findIndex(u => u.id === req.session.userId);
         
-        if (!user) {
+        if (userIndex === -1) {
             return res.status(404).json({ error: 'User not found' });
         }
         
+        // FIX: Recalculate streaks before sending user data
+        const updatedUser = recalculateAllStreaks(users[userIndex]);
+        users[userIndex] = updatedUser;
+        fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
+        
         // Remove sensitive information
-        const { password, ...userWithoutPassword } = user;
+        const { password, ...userWithoutPassword } = updatedUser;
         res.json(userWithoutPassword);
         
     } catch (error) {
@@ -237,10 +407,18 @@ app.get('/api/habits', (req, res) => {
     
     try {
         const users = JSON.parse(fs.readFileSync(usersFilePath, 'utf8'));
-        const user = users.find(u => u.id === req.session.userId);
-        if (!user) return res.status(404).json({ error: 'User not found' });
-        res.json(user.habits || []);
+        const userIndex = users.findIndex(u => u.id === req.session.userId);
+        
+        if (userIndex === -1) return res.status(404).json({ error: 'User not found' });
+        
+        // FIX: Recalculate streaks before sending habits
+        const updatedUser = recalculateAllStreaks(users[userIndex]);
+        users[userIndex] = updatedUser;
+        fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
+        
+        res.json(updatedUser.habits || []);
     } catch (error) {
+        console.error('Error fetching habits:', error);
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -274,6 +452,7 @@ app.post('/api/habits', (req, res) => {
         
         res.status(201).json(newHabit);
     } catch (error) {
+        console.error('Error creating habit:', error);
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -302,6 +481,7 @@ app.put('/api/habits/:id', (req, res) => {
         fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
         res.json(users[userIndex].habits[habitIndex]);
     } catch (error) {
+        console.error('Error updating habit:', error);
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -320,6 +500,7 @@ app.delete('/api/habits/:id', (req, res) => {
         
         res.json({ message: 'Habit deleted successfully' });
     } catch (error) {
+        console.error('Error deleting habit:', error);
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -340,6 +521,12 @@ app.post('/api/habits/:id/toggle', (req, res) => {
         if (habitIndex === -1) return res.status(404).json({ error: 'Habit not found' });
         
         const habit = users[userIndex].habits[habitIndex];
+        
+        // Initialize completedDates if it doesn't exist
+        if (!habit.completedDates) {
+            habit.completedDates = [];
+        }
+        
         const dateIndex = habit.completedDates.indexOf(targetDate);
         
         if (dateIndex === -1) {
@@ -348,30 +535,12 @@ app.post('/api/habits/:id/toggle', (req, res) => {
             habit.completedDates.splice(dateIndex, 1);
         }
         
-        // Calculate streak
-        const sortedDates = habit.completedDates.sort();
-        let currentStreak = 0;
-        let longestStreak = habit.longestStreak || 0;
+        // Sort dates for consistency
+        habit.completedDates.sort();
         
-        if (sortedDates.length > 0) {
-            const today = new Date().toISOString().split('T')[0];
-            const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-            
-            if (sortedDates.includes(today)) {
-                currentStreak = 1;
-                let checkDate = yesterday;
-                
-                while (sortedDates.includes(checkDate)) {
-                    currentStreak++;
-                    checkDate = new Date(new Date(checkDate) - 86400000).toISOString().split('T')[0];
-                }
-            }
-            
-            longestStreak = Math.max(longestStreak, currentStreak);
-        }
-        
-        habit.streak = currentStreak;
-        habit.longestStreak = longestStreak;
+        // FIX: Recalculate streaks using the dedicated functions
+        habit.streak = calculateHabitStreak(habit);
+        habit.longestStreak = calculateLongestStreak(habit);
         
         // Check for streak milestones and update rewards
         const rewards = checkAndUpdateRewards(users[userIndex], habit);
@@ -382,9 +551,22 @@ app.post('/api/habits/:id/toggle', (req, res) => {
         // Check for streak freezes
         checkAndAwardFreezes(users[userIndex]);
         
+        // Recalculate overall user streaks
+        recalculateAllStreaks(users[userIndex]);
+        
         fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
-        res.json({ habit, rewards: users[userIndex].rewards, streakFreezes: users[userIndex].streakFreezes });
+        
+        // Calculate overall streak for response
+        const overallStreak = calculateOverallStreak(users[userIndex]);
+        
+        res.json({ 
+            habit, 
+            rewards: users[userIndex].rewards, 
+            streakFreezes: users[userIndex].streakFreezes,
+            overallStreak
+        });
     } catch (error) {
+        console.error('Toggle error:', error);
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -404,16 +586,16 @@ function checkAndUpdateRewards(user, habit) {
             // Award stars based on milestone
             if (milestone === 7) {
                 rewards.stars += 10;
-                rewards.badges.push({ name: '7-Day Star', icon: '⭐', date: new Date().toISOString() });
+                rewards.badges.push({ name: '7-Day Warrior', icon: '⭐', date: new Date().toISOString() });
             } else if (milestone === 30) {
                 rewards.stars += 50;
-                rewards.badges.push({ name: 'Monthly Master', icon: '🌙', date: new Date().toISOString() });
+                rewards.badges.push({ name: '30-Day Master', icon: '🌙', date: new Date().toISOString() });
             } else if (milestone === 50) {
                 rewards.stars += 100;
                 rewards.badges.push({ name: '50-Day Champion', icon: '🏆', date: new Date().toISOString() });
             } else if (milestone === 100) {
                 rewards.stars += 500;
-                rewards.badges.push({ name: 'Century Club', icon: '💯', date: new Date().toISOString() });
+                rewards.badges.push({ name: '100-Day Legend', icon: '💯', date: new Date().toISOString() });
             } else if (milestone === 365) {
                 rewards.stars += 1000;
                 rewards.badges.push({ name: 'Year Warrior', icon: '👑', date: new Date().toISOString() });
@@ -440,7 +622,8 @@ function checkAndAwardFreezes(user) {
             available: 0,
             used: 0,
             history: [],
-            appliedDays: []
+            appliedDays: [],
+            awardedStreaks: []
         };
     }
     
@@ -471,13 +654,13 @@ function checkAndAwardFreezes(user) {
                 if (consecutiveCount >= 3 && user.streakFreezes.available < 2) {
                     // Check if we already awarded for this streak
                     const streakKey = `streak_${lastDate}_${date}`;
-                    const awardedStreaks = user.streakFreezes.awardedStreaks || [];
                     
-                    if (!awardedStreaks.includes(streakKey)) {
+                    if (!user.streakFreezes.awardedStreaks) {
+                        user.streakFreezes.awardedStreaks = [];
+                    }
+                    
+                    if (!user.streakFreezes.awardedStreaks.includes(streakKey)) {
                         user.streakFreezes.available++;
-                        if (!user.streakFreezes.awardedStreaks) {
-                            user.streakFreezes.awardedStreaks = [];
-                        }
                         user.streakFreezes.awardedStreaks.push(streakKey);
                         
                         // Log freeze award
@@ -704,9 +887,6 @@ app.post('/api/chatbot/ask', (req, res) => {
     }
 });
 
-// Enhanced chatbot response generator for English-only
-// server.js - Replace the entire generateChatbotResponse function
-
 // Enhanced chatbot response generator with correct age from DOB
 function generateChatbotResponse(message, user) {
     const lowerMsg = message.toLowerCase().trim();
@@ -748,11 +928,12 @@ function generateChatbotResponse(message, user) {
         let checkDate = new Date(today);
         for (let i = 1; i <= 365; i++) {
             const prevDate = new Date(checkDate);
-            prevDate.setDate(prevDate.getDate() - i);
+            prevDate.setDate(prevDate.getDate() - 1);
             const prevDateStr = prevDate.toISOString().split('T')[0];
             
             if (sortedDates.includes(prevDateStr)) {
                 mainStreak++;
+                checkDate = prevDate;
             } else {
                 break;
             }
@@ -775,7 +956,7 @@ function generateChatbotResponse(message, user) {
     const responses = {
         greeting: `Hello ${user.username}! 👋 I'm your HabitLog assistant. How can I help you today?`,
         name: `Your name is ${user.username}`,
-        age: `You are ${age} years old . You are in the ${category} category.`,
+        age: `You are ${age} years old. You are in the ${category} category.`,
         streak: `Your current streak is ${mainStreak} days. You've been consistent for ${mainStreak} day${mainStreak !== 1 ? 's' : ''} in a row! Your best streak ever is ${bestStreak} days.`,
         progress: `Your progress is looking great! You've completed ${completedToday} out of ${user.habits.length} habits today.`,
         habits: `You are currently tracking ${user.habits.length} habits.`,
@@ -856,9 +1037,8 @@ const requireAuth = (req, res, next) => {
     if (req.session && req.session.userId) next();
     else res.redirect('/');
 };
-app.get('/chatbot', requireAuth, (req, res) => res.sendFile(path.join(__dirname, 'public', 'chatbot.html')));
 
-// Serve HTML pages - ADDED chatbot route back
+// Serve HTML pages
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/dashboard', requireAuth, (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.html')));
 app.get('/calendar', requireAuth, (req, res) => res.sendFile(path.join(__dirname, 'public', 'calendar.html')));
@@ -877,5 +1057,5 @@ app.listen(PORT, () => {
     console.log(`📊 Progress: http://localhost:${PORT}/progress`);
     console.log(`😊 Mood Tracker: http://localhost:${PORT}/mood-tracker`);
     console.log(`🤖 AI Chatbot: http://localhost:${PORT}/chatbot`);
-    console.log(`⚙️ Settings: http://localhost:${PORT}/settings`);
+    console.log(`⚙️ Settings: http://localhost:${PORT}/settings`); 
 });
