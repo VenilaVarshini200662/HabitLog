@@ -361,6 +361,9 @@
             const saved = localStorage.getItem('customReminders');
             if (saved) {
                 reminders = JSON.parse(saved);
+            } else {
+                // MODIFIED: Initialize with empty array instead of sample data
+                reminders = [];
             }
             renderReminders();
         }
@@ -518,5 +521,4 @@
         });
     </script>
 </body>
-
 </html>
