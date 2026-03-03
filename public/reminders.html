@@ -361,28 +361,6 @@
             const saved = localStorage.getItem('customReminders');
             if (saved) {
                 reminders = JSON.parse(saved);
-            } else {
-                // Sample data for demo
-                reminders = [
-                    {
-                        id: '1',
-                        title: 'Morning Meditation',
-                        description: '10 minutes of mindfulness',
-                        time: '06:00',
-                        ampm: 'AM',
-                        repeat: 'daily',
-                        active: true
-                    },
-                    {
-                        id: '2',
-                        title: 'Evening Jog',
-                        description: '30 minutes run in the park',
-                        time: '07:00',
-                        ampm: 'PM',
-                        repeat: 'weekdays',
-                        active: true
-                    }
-                ];
             }
             renderReminders();
         }
@@ -540,4 +518,5 @@
         });
     </script>
 </body>
+
 </html>
