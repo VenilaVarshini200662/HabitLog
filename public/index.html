@@ -460,33 +460,44 @@
         });
 
         // API calls
-        async function apiCall(url, options = {}, retries = 3) {
-            for (let i = 0; i < retries; i++) {
-                try {
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 10000);
-                    
-                    const response = await fetch(url, {
-                        ...options,
-                        signal: controller.signal,
-                        headers: { 'Content-Type': 'application/json', ...options.headers },
-                    });
-                    
-                    clearTimeout(timeoutId);
-                    
-                    if (!response.ok) {
-                        const errorData = await response.json().catch(() => ({}));
-                        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-                    }
-                    
-                    return await response.json();
-                } catch (error) {
-                    console.error(`API call attempt ${i + 1} failed:`, error);
-                    if (i === retries - 1) throw error;
-                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
-                }
+        // Replace the existing apiCall function with this:
+async function apiCall(url, options = {}, retries = 3) {
+    // If using relative URLs, prepend API base if needed
+    const fullUrl = url.startsWith('http') ? url : url;
+    
+    for (let i = 0; i < retries; i++) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            
+            // Include credentials for session cookies
+            const fetchOptions = {
+                ...options,
+                credentials: 'include', // CRITICAL: This sends cookies
+                signal: controller.signal,
+                headers: { 
+                    'Content-Type': 'application/json', 
+                    ...options.headers 
+                },
+            };
+            
+            const response = await fetch(fullUrl, fetchOptions);
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
             }
+            
+            return await response.json();
+        } catch (error) {
+            console.error(`API call attempt ${i + 1} failed:`, error);
+            if (i === retries - 1) throw error;
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
         }
+    }
+}
 
         // Signup form submission - UPDATED with DOB (REMOVED language)
         document.getElementById('signupForm').addEventListener('submit', async (e) => {
@@ -561,50 +572,76 @@
         });
 
         // Login form submission
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const submitBtn = document.getElementById('loginSubmitBtn');
-            submitBtn.disabled = true;
-            showLoading();
-            
-            const credentials = {
-                email: document.getElementById('loginEmail').value.trim(),
-                password: document.getElementById('loginPassword').value
-            };
+        // Login form submission - UPDATED with better error handling and session support
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const submitBtn = document.getElementById('loginSubmitBtn');
+    submitBtn.disabled = true;
+    showLoading();
+    
+    const credentials = {
+        email: document.getElementById('loginEmail').value.trim(),
+        password: document.getElementById('loginPassword').value
+    };
 
-            if (!credentials.email || !credentials.password) {
-                hideLoading(); submitBtn.disabled = false; showError('Please fill in all fields'); return;
-            }
+    if (!credentials.email || !credentials.password) {
+        hideLoading(); 
+        submitBtn.disabled = false; 
+        showError('Please fill in all fields'); 
+        return;
+    }
 
-            try {
-                const data = await apiCall('/api/auth/login', {
-                    method: 'POST',
-                    body: JSON.stringify(credentials)
-                });
-
-                if (data.user) {
-                    localStorage.setItem('user', JSON.stringify(data.user));
-                    // Save language preference from user data (defaults to English)
-                    if (data.user.language) {
-                        localStorage.setItem('language', data.user.language);
-                    } else {
-                        localStorage.setItem('language', 'english');
-                    }
-                    
-                    showSuccess(`Welcome back! Redirecting to dashboard...`);
-                }
-
-                hideLoading(); submitBtn.disabled = false; hideModal(loginModal);
-                setTimeout(() => window.location.href = '/dashboard', 1500);
-            } catch (error) {
-                hideLoading(); submitBtn.disabled = false;
-                if (error.name === 'AbortError') showError('Request timeout. Please check your connection.');
-                else if (error.message.includes('Failed to fetch')) showError('Cannot connect to server. Please ensure the server is running.');
-                else showError(error.message || 'Login failed. Please check your credentials.');
-            }
+    try {
+        console.log('Attempting login for:', credentials.email);
+        
+        // Using apiCall which already has credentials: 'include' built-in
+        const data = await apiCall('/api/auth/login', {
+            method: 'POST',
+            body: JSON.stringify(credentials)
         });
 
+        console.log('Login response:', data);
+
+        if (data.user) {
+            // Store user data in localStorage
+            localStorage.setItem('user', JSON.stringify(data.user));
+            
+            // Save language preference from user data (defaults to English)
+            if (data.user.language) {
+                localStorage.setItem('language', data.user.language);
+            } else {
+                localStorage.setItem('language', 'english');
+            }
+            
+            showSuccess(`Welcome back, ${data.user.username || 'User'}! Redirecting to dashboard...`);
+            
+            // Small delay before redirect to show success message
+            setTimeout(() => {
+                window.location.href = '/dashboard';
+            }, 1500);
+        } else {
+            throw new Error('Invalid response from server');
+        }
+
+    } catch (error) {
+        console.error('Login error details:', error);
+        hideLoading(); 
+        submitBtn.disabled = false;
+        
+        if (error.name === 'AbortError') {
+            showError('Request timeout. Please check your connection.');
+        } else if (error.message.includes('Failed to fetch')) {
+            showError('Cannot connect to server. Please ensure the server is running.');
+        } else if (error.message.includes('401')) {
+            showError('Invalid email or password. Please try again.');
+        } else {
+            showError(error.message || 'Login failed. Please check your credentials.');
+        }
+    } finally {
+        hideLoading();
+    }
+});
         // Check server health
         async function checkServerHealth() {
             try {
