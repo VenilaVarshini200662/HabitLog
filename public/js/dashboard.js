@@ -171,6 +171,14 @@ async function loadUserData() {
         const response = await fetch('/api/habits');
         if (response.ok) {
             habits = await response.json();
+            
+            // FIX: Ensure each habit has completedDates array
+            habits.forEach(habit => {
+                if (!habit.completedDates) {
+                    habit.completedDates = [];
+                }
+            });
+            
             updateDashboard();
             
             // Show/hide quick add section
@@ -195,8 +203,11 @@ function updateDashboard() {
     const today = new Date().toISOString().split('T')[0];
     const completedToday = habits.filter(h => h.completedDates?.includes(today)).length;
     
-    // Calculate main streak based on days with at least one completed habit
+    // FIX: Calculate main streak based on days with at least one completed habit
     const mainStreak = calculateMainStreak();
+    
+    // FIX: Also calculate individual habit streaks
+    recalculateHabitStreaks();
     
     const achievementsCount = calculateAchievements();
 
@@ -209,6 +220,60 @@ function updateDashboard() {
     renderHabits();
     updateWeeklySummary();
     checkNotifications();
+}
+
+// FIX: Recalculate individual habit streaks based on completion history
+function recalculateHabitStreaks() {
+    habits.forEach(habit => {
+        if (habit.completedDates && habit.completedDates.length > 0) {
+            // Sort dates
+            const sortedDates = [...habit.completedDates].sort();
+            const today = new Date().toISOString().split('T')[0];
+            
+            // Calculate current streak
+            let currentStreak = 0;
+            if (sortedDates.includes(today)) {
+                currentStreak = 1;
+                let checkDate = new Date(today);
+                
+                for (let i = 1; i <= 365; i++) {
+                    const prevDate = new Date(checkDate);
+                    prevDate.setDate(prevDate.getDate() - i);
+                    const prevDateStr = prevDate.toISOString().split('T')[0];
+                    
+                    if (sortedDates.includes(prevDateStr)) {
+                        currentStreak++;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            
+            // Calculate longest streak
+            let longestStreak = 0;
+            let streak = 1;
+            
+            for (let i = 1; i < sortedDates.length; i++) {
+                const prevDate = new Date(sortedDates[i-1]);
+                const currDate = new Date(sortedDates[i]);
+                const diffDays = Math.round((currDate - prevDate) / (1000 * 60 * 60 * 24));
+                
+                if (diffDays === 1) {
+                    streak++;
+                } else {
+                    longestStreak = Math.max(longestStreak, streak);
+                    streak = 1;
+                }
+            }
+            longestStreak = Math.max(longestStreak, streak);
+            
+            // Update habit streaks
+            habit.streak = currentStreak;
+            habit.longestStreak = Math.max(habit.longestStreak || 0, longestStreak);
+        } else {
+            habit.streak = 0;
+        }
+    });
 }
 
 // Calculate streak based on consecutive days with at least one habit completed
@@ -310,6 +375,10 @@ function renderEmptyState(container) {
 function createHabitCard(habit) {
     const today = new Date().toISOString().split('T')[0];
     const isCompleted = habit.completedDates?.includes(today);
+    
+    // FIX: Ensure habit has streak property
+    const currentStreak = habit.streak || 0;
+    const longestStreak = habit.longestStreak || 0;
 
     const card = document.createElement('div');
     card.className = 'habit-card bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md';
@@ -338,13 +407,13 @@ function createHabitCard(habit) {
             <div>
                 <span class="text-sm text-gray-500 dark:text-gray-400">Current Streak</span>
                 <div class="flex items-center">
-                    <span class="text-2xl font-bold text-accent-500">${habit.streak || 0}</span>
+                    <span class="text-2xl font-bold text-accent-500">${currentStreak}</span>
                     <span class="text-gray-400 ml-1">🔥</span>
                 </div>
             </div>
             <div>
                 <span class="text-sm text-gray-500 dark:text-gray-400">Longest</span>
-                <div class="text-xl font-semibold text-gray-900 dark:text-white">${habit.longestStreak || 0}</div>
+                <div class="text-xl font-semibold text-gray-900 dark:text-white">${longestStreak}</div>
             </div>
         </div>
         
@@ -405,13 +474,22 @@ async function toggleHabit(habitId) {
             const data = await response.json();
             const index = habits.findIndex(h => h.id === habitId);
             if (index !== -1) {
+                // FIX: Update with server data but ensure completedDates is preserved
                 habits[index] = data.habit;
+                
+                // FIX: Recalculate all streaks after toggle
+                recalculateHabitStreaks();
+                
+                // FIX: Update dashboard with new streak values
                 updateDashboard();
                 
                 // Update rewards if changed
                 if (data.rewards) {
                     loadUserRewards();
                 }
+                
+                // FIX: Check for streak milestones
+                checkStreakMilestones(habits[index]);
             }
             showSuccess('Habit updated!');
             
@@ -423,6 +501,54 @@ async function toggleHabit(habitId) {
         hideLoading();
         console.error('Error toggling habit:', error);
         showError('Failed to update habit');
+    }
+}
+
+// FIX: Add streak milestone checker
+function checkStreakMilestones(habit) {
+    const milestones = [7, 30, 50, 100, 365];
+    const reachedMilestone = milestones.find(m => habit.streak === m);
+    
+    if (reachedMilestone) {
+        showSuccess(`🎉 Congratulations! You've reached a ${reachedMilestone}-day streak!`);
+        
+        // Show confetti effect
+        showConfetti();
+    }
+}
+
+// FIX: Add confetti effect for milestones
+function showConfetti() {
+    const colors = ['#4f46e5', '#14b8a6', '#f59e0b', '#ef4444'];
+    
+    for (let i = 0; i < 50; i++) {
+        const confetti = document.createElement('div');
+        confetti.className = 'fixed pointer-events-none';
+        confetti.style.left = Math.random() * 100 + '%';
+        confetti.style.top = '-10px';
+        confetti.style.width = '8px';
+        confetti.style.height = '8px';
+        confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        confetti.style.borderRadius = '50%';
+        confetti.style.zIndex = '9999';
+        confetti.style.animation = `fall ${Math.random() * 3 + 2}s linear`;
+        document.body.appendChild(confetti);
+        
+        setTimeout(() => confetti.remove(), 5000);
+    }
+    
+    // Add keyframe animation if not exists
+    if (!document.querySelector('#confetti-style')) {
+        const style = document.createElement('style');
+        style.id = 'confetti-style';
+        style.textContent = `
+            @keyframes fall {
+                to {
+                    transform: translateY(100vh) rotate(360deg);
+                }
+            }
+        `;
+        document.head.appendChild(style);
     }
 }
 
@@ -531,6 +657,12 @@ async function saveHabit(event) {
 
         if (response.ok) {
             const habit = await response.json();
+            
+            // FIX: Ensure new habits have completedDates array
+            if (!habit.completedDates) {
+                habit.completedDates = [];
+            }
+            
             if (habitId) {
                 // Update existing habit
                 const index = habits.findIndex(h => h.id === habitId);
@@ -544,6 +676,8 @@ async function saveHabit(event) {
                 showSuccess('Habit created successfully');
             }
             
+            // FIX: Recalculate all streaks
+            recalculateHabitStreaks();
             updateDashboard();
             hideModal('habitModal');
             
@@ -756,10 +890,15 @@ function initializeEventListeners() {
     }
 
     // Logout button
-    const logoutBtn = createLogoutButton();
-    const nav = document.querySelector('.flex.items-center.space-x-2.md\\:space-x-4');
-    if (nav) {
-        nav.appendChild(logoutBtn);
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', logout);
+    }
+
+    // Mobile logout button
+    const mobileLogoutBtn = document.getElementById('mobileLogoutBtn');
+    if (mobileLogoutBtn) {
+        mobileLogoutBtn.addEventListener('click', logout);
     }
 
     // Reminder interval for browser notifications
@@ -772,15 +911,6 @@ function initializeEventListeners() {
             hideModal('remindersModal');
         }
     });
-}
-
-function createLogoutButton() {
-    const logoutBtn = document.createElement('button');
-    logoutBtn.onclick = logout;
-    logoutBtn.className = 'px-3 py-2 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition-colors';
-    logoutBtn.title = 'Logout';
-    logoutBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i>';
-    return logoutBtn;
 }
 
 // Email reminder functions (placeholder)
