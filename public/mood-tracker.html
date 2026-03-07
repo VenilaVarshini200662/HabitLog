@@ -503,6 +503,18 @@
                 const habitsResponse = await fetch('/api/habits');
                 if (habitsResponse.ok) {
                     habits = await habitsResponse.json();
+                    console.log('Loaded habits:', habits); // Debug log
+                    
+                    // Ensure each habit has completedDates array
+                    habits.forEach(habit => {
+                        if (!habit.completedDates) {
+                            habit.completedDates = [];
+                        }
+                    });
+                } else if (habitsResponse.status === 401) {
+                    // Not authenticated, redirect to login
+                    window.location.href = '/';
+                    return;
                 }
                 
                 // Load streak freeze data
@@ -551,7 +563,7 @@
             // Get all unique dates where at least one habit was completed
             const completionDates = new Set();
             habits.forEach(habit => {
-                if (habit.completedDates) {
+                if (habit.completedDates && Array.isArray(habit.completedDates)) {
                     habit.completedDates.forEach(date => completionDates.add(date));
                 }
             });
@@ -567,8 +579,9 @@
                 let checkDate = new Date(today);
                 
                 for (let i = 1; i <= 365; i++) {
-                    checkDate.setDate(checkDate.getDate() - 1);
-                    const dateStr = checkDate.toISOString().split('T')[0];
+                    const prevDate = new Date(checkDate);
+                    prevDate.setDate(prevDate.getDate() - i);
+                    const dateStr = prevDate.toISOString().split('T')[0];
                     
                     if (sortedDates.includes(dateStr)) {
                         streak++;
@@ -582,58 +595,53 @@
         }
 
         // Update statistics
-        // Update statistics - FIXED VERSION
-// Update statistics - FIXED VERSION
-function updateStats() {
-    document.getElementById('currentStreak').textContent = streakData.currentStreak;
-    document.getElementById('freezesUsed').textContent = streakData.freezesUsed;
-    
-    // Calculate mood stats - count DAYS, not individual feedback
-    const feedback = JSON.parse(localStorage.getItem('habitFeedback') || '{}');
-    
-    // Track unique days and their mood
-    const dayMoodMap = new Map(); // date -> { good: count, bad: count }
-    
-    // Aggregate feedback by day
-    Object.values(feedback).forEach(habitFeedbacks => {
-        habitFeedbacks.forEach(f => {
-            const date = f.date.split('T')[0]; // Get just the date part
+        function updateStats() {
+            document.getElementById('currentStreak').textContent = streakData.currentStreak;
+            document.getElementById('freezesUsed').textContent = streakData.freezesUsed;
             
-            if (!dayMoodMap.has(date)) {
-                dayMoodMap.set(date, { good: 0, bad: 0 });
-            }
+            // Calculate mood stats - count DAYS, not individual feedback
+            const feedback = JSON.parse(localStorage.getItem('habitFeedback') || '{}');
             
-            const dayData = dayMoodMap.get(date);
-            if (f.type === 'good') {
-                dayData.good++;
-            } else if (f.type === 'bad') {
-                dayData.bad++;
-            }
-        });
-    });
-    
-    // Count positive and negative DAYS
-    let positiveDays = 0;
-    let negativeDays = 0;
-    
-    dayMoodMap.forEach((dayData, date) => {
-        if (dayData.good > dayData.bad) {
-            positiveDays++;  // This day was overall positive
-            console.log(`Positive day: ${date} (${dayData.good} good, ${dayData.bad} bad)`);
-        } else if (dayData.bad > dayData.good) {
-            negativeDays++;  // This day was overall negative
-            console.log(`Negative day: ${date} (${dayData.good} good, ${dayData.bad} bad)`);
+            // Track unique days and their mood
+            const dayMoodMap = new Map(); // date -> { good: count, bad: count }
+            
+            // Aggregate feedback by day
+            Object.values(feedback).forEach(habitFeedbacks => {
+                habitFeedbacks.forEach(f => {
+                    const date = f.date.split('T')[0]; // Get just the date part
+                    
+                    if (!dayMoodMap.has(date)) {
+                        dayMoodMap.set(date, { good: 0, bad: 0 });
+                    }
+                    
+                    const dayData = dayMoodMap.get(date);
+                    if (f.type === 'good') {
+                        dayData.good++;
+                    } else if (f.type === 'bad') {
+                        dayData.bad++;
+                    }
+                });
+            });
+            
+            // Count positive and negative DAYS
+            let positiveDays = 0;
+            let negativeDays = 0;
+            
+            dayMoodMap.forEach((dayData, date) => {
+                if (dayData.good > dayData.bad) {
+                    positiveDays++;  // This day was overall positive
+                } else if (dayData.bad > dayData.good) {
+                    negativeDays++;  // This day was overall negative
+                }
+                // If equal, it's neutral - don't count as either
+            });
+            
+            document.getElementById('positiveDays').textContent = positiveDays;
+            document.getElementById('negativeDays').textContent = negativeDays;
+            
+            updateFreezeDisplay();
         }
-        // If equal, it's neutral - don't count as either
-    });
-    
-    console.log(`Total positive days: ${positiveDays}, Total negative days: ${negativeDays}`);
-    
-    document.getElementById('positiveDays').textContent = positiveDays;
-    document.getElementById('negativeDays').textContent = negativeDays;
-    
-    updateFreezeDisplay();
-}
+
         // Update freeze display
         function updateFreezeDisplay() {
             document.getElementById('freezeCount').textContent = `${streakData.freezesAvailable}/2 Freezes Available`;
@@ -651,177 +659,178 @@ function updateStats() {
         }
 
         // Initialize charts
-        // Initialize charts
-function initCharts() {
-    const isDark = html.classList.contains('dark');
-    const textColor = isDark ? '#e5e7eb' : '#374151';
-    const gridColor = isDark ? '#374151' : '#e5e7eb';
+        function initCharts() {
+            const isDark = html.classList.contains('dark');
+            const textColor = isDark ? '#e5e7eb' : '#374151';
+            const gridColor = isDark ? '#374151' : '#e5e5e5';
 
-    // Get last 14 days of data
-    const labels = [];
-    const habitData = [];
-    const moodData = [];
-    
-    const today = new Date();
-    
-    // First, aggregate all feedback by day for mood calculation
-    const feedback = JSON.parse(localStorage.getItem('habitFeedback') || '{}');
-    const dayFeedback = new Map(); // date -> { good: count, bad: count }
-    
-    Object.values(feedback).forEach(habitFeedbacks => {
-        habitFeedbacks.forEach(f => {
-            const date = f.date.split('T')[0];
+            // Get last 14 days of data
+            const labels = [];
+            const habitData = [];
+            const moodData = [];
             
-            if (!dayFeedback.has(date)) {
-                dayFeedback.set(date, { good: 0, bad: 0 });
-            }
+            const today = new Date();
             
-            const dayData = dayFeedback.get(date);
-            if (f.type === 'good') {
-                dayData.good++;
-            } else if (f.type === 'bad') {
-                dayData.bad++;
-            }
-        });
-    });
-    
-    for (let i = 13; i >= 0; i--) {
-        const date = new Date(today);
-        date.setDate(today.getDate() - i);
-        const dateStr = date.toISOString().split('T')[0];
-        const displayDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        labels.push(displayDate);
-        
-        // Count habits completed
-        const habitsCompleted = habits.filter(h => h.completedDates?.includes(dateStr)).length;
-        habitData.push(habitsCompleted);
-        
-        // ===== THIS IS THE SECTION YOU NEED TO UPDATE =====
-        // Get mood data for the day from our aggregated map
-        const dayData = dayFeedback.get(dateStr) || { good: 0, bad: 0 };
-        
-        // Calculate mood score based on day classification (0-100)
-        let dayMood = 50; // Default neutral
-        
-        if (dayData.good > dayData.bad) {
-            dayMood = 80; // Positive day
-        } else if (dayData.bad > dayData.good) {
-            dayMood = 20; // Negative day
-        } else {
-            dayMood = 50; // Neutral day (equal good and bad, or no feedback)
-        }
-        // ===== END OF SECTION TO UPDATE =====
-        
-        moodData.push(dayMood);
-    }
-
-    // Mood vs Habits Chart
-    const moodHabitCtx = document.getElementById('moodHabitChart').getContext('2d');
-    if (moodHabitChart) moodHabitChart.destroy();
-    
-    moodHabitChart = new Chart(moodHabitCtx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [
-                {
-                    label: 'Habits Completed',
-                    data: habitData,
-                    borderColor: '#6366f1',
-                    backgroundColor: 'rgba(99, 102, 241, 0.1)',
-                    tension: 0.4,
-                    yAxisID: 'y',
-                    fill: true
-                },
-                {
-                    label: 'Mood Score',
-                    data: moodData,
-                    borderColor: '#10b981',
-                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                    tension: 0.4,
-                    yAxisID: 'y1',
-                    fill: true
+            // First, aggregate all feedback by day for mood calculation
+            const feedback = JSON.parse(localStorage.getItem('habitFeedback') || '{}');
+            const dayFeedback = new Map(); // date -> { good: count, bad: count }
+            
+            Object.values(feedback).forEach(habitFeedbacks => {
+                habitFeedbacks.forEach(f => {
+                    const date = f.date.split('T')[0];
+                    
+                    if (!dayFeedback.has(date)) {
+                        dayFeedback.set(date, { good: 0, bad: 0 });
+                    }
+                    
+                    const dayData = dayFeedback.get(date);
+                    if (f.type === 'good') {
+                        dayData.good++;
+                    } else if (f.type === 'bad') {
+                        dayData.bad++;
+                    }
+                });
+            });
+            
+            for (let i = 13; i >= 0; i--) {
+                const date = new Date(today);
+                date.setDate(today.getDate() - i);
+                const dateStr = date.toISOString().split('T')[0];
+                const displayDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                labels.push(displayDate);
+                
+                // FIX: Count habits completed for this date
+                let habitsCompleted = 0;
+                habits.forEach(habit => {
+                    if (habit.completedDates && habit.completedDates.includes(dateStr)) {
+                        habitsCompleted++;
+                    }
+                });
+                habitData.push(habitsCompleted);
+                
+                // Get mood data for the day from our aggregated map
+                const dayData = dayFeedback.get(dateStr) || { good: 0, bad: 0 };
+                
+                // Calculate mood score based on day classification (0-100)
+                let dayMood = 50; // Default neutral
+                
+                if (dayData.good > dayData.bad) {
+                    dayMood = 80; // Positive day
+                } else if (dayData.bad > dayData.good) {
+                    dayMood = 20; // Negative day
                 }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    type: 'linear',
-                    display: true,
-                    position: 'left',
-                    beginAtZero: true,
-                    grid: { color: gridColor },
-                    ticks: { color: textColor }
+                
+                moodData.push(dayMood);
+            }
+
+            // Mood vs Habits Chart
+            const moodHabitCtx = document.getElementById('moodHabitChart').getContext('2d');
+            if (moodHabitChart) moodHabitChart.destroy();
+            
+            moodHabitChart = new Chart(moodHabitCtx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Habits Completed',
+                            data: habitData,
+                            borderColor: '#6366f1',
+                            backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                            tension: 0.4,
+                            yAxisID: 'y',
+                            fill: true
+                        },
+                        {
+                            label: 'Mood Score',
+                            data: moodData,
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            tension: 0.4,
+                            yAxisID: 'y1',
+                            fill: true
+                        }
+                    ]
                 },
-                y1: {
-                    type: 'linear',
-                    display: true,
-                    position: 'right',
-                    min: 0,
-                    max: 100,
-                    grid: { drawOnChartArea: false },
-                    ticks: { 
-                        color: textColor,
-                        callback: function(value) {
-                            return value + '%';
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            beginAtZero: true,
+                            grid: { color: gridColor },
+                            ticks: { color: textColor }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            min: 0,
+                            max: 100,
+                            grid: { drawOnChartArea: false },
+                            ticks: { 
+                                color: textColor,
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: textColor }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: { color: textColor }
                         }
                     }
+                }
+            });
+
+            // Mood Distribution Pie Chart
+            let good = 0;
+            let bad = 0;
+            
+            dayFeedback.forEach(dayData => {
+                good += dayData.good;
+                bad += dayData.bad;
+            });
+
+            const moodPieCtx = document.getElementById('moodPieChart').getContext('2d');
+            if (moodPieChart) moodPieChart.destroy();
+            
+            moodPieChart = new Chart(moodPieCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Positive Mood', 'Negative Mood'],
+                    datasets: [{
+                        data: [good, bad],
+                        backgroundColor: ['#10b981', '#ef4444'],
+                        borderWidth: 0
+                    }]
                 },
-                x: {
-                    grid: { display: false },
-                    ticks: { color: textColor }
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: textColor }
+                        }
+                    },
+                    cutout: '60%'
                 }
-            },
-            plugins: {
-                legend: {
-                    labels: { color: textColor }
-                }
-            }
+            });
         }
-    });
 
-    // Mood Distribution Pie Chart
-    let good = 0;
-    let bad = 0;
-    
-    dayFeedback.forEach(dayData => {
-        good += dayData.good;
-        bad += dayData.bad;
-    });
-
-    const moodPieCtx = document.getElementById('moodPieChart').getContext('2d');
-    if (moodPieChart) moodPieChart.destroy();
-    
-    moodPieChart = new Chart(moodPieCtx, {
-        type: 'doughnut',
-        data: {
-            labels: ['Positive Mood', 'Negative Mood'],
-            datasets: [{
-                data: [good, bad],
-                backgroundColor: ['#10b981', '#ef4444'],
-                borderWidth: 0
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    labels: { color: textColor }
-                }
-            },
-            cutout: '60%'
-        }
-    });
-}
         // Render freeze history
         function renderFreezeHistory() {
             const container = document.getElementById('freezeHistory');
             
-            if (streakData.freezeHistory.length === 0) {
+            if (!streakData.freezeHistory || streakData.freezeHistory.length === 0) {
                 container.innerHTML = '<p class="text-gray-500 dark:text-gray-400 text-center py-4">No streak freeze activity yet. Complete 3 days in a row to earn your first freeze!</p>';
                 return;
             }
@@ -861,78 +870,79 @@ function initCharts() {
         }
 
         // Render mood table
-        // Render mood table - UPDATED
-function renderMoodTable() {
-    const tbody = document.getElementById('moodTableBody');
-    
-    // Get last 14 days
-    const rows = [];
-    const today = new Date();
-    
-    // First, aggregate all feedback by day
-    const feedback = JSON.parse(localStorage.getItem('habitFeedback') || '{}');
-    const dayFeedback = new Map(); // date -> { good: count, bad: count }
-    
-    Object.values(feedback).forEach(habitFeedbacks => {
-        habitFeedbacks.forEach(f => {
-            const date = f.date.split('T')[0];
+        function renderMoodTable() {
+            const tbody = document.getElementById('moodTableBody');
             
-            if (!dayFeedback.has(date)) {
-                dayFeedback.set(date, { good: 0, bad: 0 });
+            // Get last 14 days
+            const rows = [];
+            const today = new Date();
+            
+            // First, aggregate all feedback by day
+            const feedback = JSON.parse(localStorage.getItem('habitFeedback') || '{}');
+            const dayFeedback = new Map(); // date -> { good: count, bad: count }
+            
+            Object.values(feedback).forEach(habitFeedbacks => {
+                habitFeedbacks.forEach(f => {
+                    const date = f.date.split('T')[0];
+                    
+                    if (!dayFeedback.has(date)) {
+                        dayFeedback.set(date, { good: 0, bad: 0 });
+                    }
+                    
+                    const dayData = dayFeedback.get(date);
+                    if (f.type === 'good') {
+                        dayData.good++;
+                    } else if (f.type === 'bad') {
+                        dayData.bad++;
+                    }
+                });
+            });
+            
+            for (let i = 13; i >= 0; i--) {
+                const date = new Date(today);
+                date.setDate(today.getDate() - i);
+                const dateStr = date.toISOString().split('T')[0];
+                const displayDate = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                
+                // FIX: Count habits completed for this date
+                let habitsCompleted = 0;
+                habits.forEach(habit => {
+                    if (habit.completedDates && habit.completedDates.includes(dateStr)) {
+                        habitsCompleted++;
+                    }
+                });
+                
+                // Get mood for the day from our aggregated map
+                const dayData = dayFeedback.get(dateStr) || { good: 0, bad: 0 };
+                
+                let moodDisplay = '';
+                
+                if (dayData.good > dayData.bad) {
+                    moodDisplay = '<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">😊 Positive</span>';
+                } else if (dayData.bad > dayData.good) {
+                    moodDisplay = '<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">😔 Negative</span>';
+                } else {
+                    moodDisplay = '<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">😐 Neutral</span>';
+                }
+                
+                const isFrozen = streakData.streakFreezeDays && streakData.streakFreezeDays.includes(dateStr);
+                
+                const freezeDisplay = isFrozen ? 
+                    '<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"><i class="fas fa-snowflake mr-1"></i>Freeze Applied</span>' : 
+                    '<span class="text-gray-400 dark:text-gray-600">—</span>';
+                
+                rows.push(`
+                    <tr>
+                        <td class="px-4 py-3 text-sm text-gray-900 dark:text-white">${displayDate}</td>
+                        <td class="px-4 py-3 text-sm text-gray-900 dark:text-white">${habitsCompleted}</td>
+                        <td class="px-4 py-3 text-sm">${moodDisplay}</td>
+                        <td class="px-4 py-3 text-sm">${freezeDisplay}</td>
+                    </tr>
+                `);
             }
             
-            const dayData = dayFeedback.get(date);
-            if (f.type === 'good') {
-                dayData.good++;
-            } else if (f.type === 'bad') {
-                dayData.bad++;
-            }
-        });
-    });
-    
-    for (let i = 13; i >= 0; i--) {
-        const date = new Date(today);
-        date.setDate(today.getDate() - i);
-        const dateStr = date.toISOString().split('T')[0];
-        const displayDate = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        
-        // Count habits completed
-        const habitsCompleted = habits.filter(h => h.completedDates?.includes(dateStr)).length;
-        
-        // Get mood for the day from our aggregated map
-        const dayData = dayFeedback.get(dateStr) || { good: 0, bad: 0 };
-        
-        let mood = 'neutral';
-        let moodDisplay = '';
-        
-        if (dayData.good > dayData.bad) {
-            mood = 'good';
-            moodDisplay = '<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">😊 Positive</span>';
-        } else if (dayData.bad > dayData.good) {
-            mood = 'bad';
-            moodDisplay = '<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">😔 Negative</span>';
-        } else {
-            moodDisplay = '<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">😐 Neutral</span>';
+            tbody.innerHTML = rows.join('');
         }
-        
-        const isFrozen = streakData.streakFreezeDays.includes(dateStr);
-        
-        const freezeDisplay = isFrozen ? 
-            '<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"><i class="fas fa-snowflake mr-1"></i>Freeze Applied</span>' : 
-            '<span class="text-gray-400 dark:text-gray-600">—</span>';
-        
-        rows.push(`
-            <tr>
-                <td class="px-4 py-3 text-sm text-gray-900 dark:text-white">${displayDate}</td>
-                <td class="px-4 py-3 text-sm text-gray-900 dark:text-white">${habitsCompleted}</td>
-                <td class="px-4 py-3 text-sm">${moodDisplay}</td>
-                <td class="px-4 py-3 text-sm">${freezeDisplay}</td>
-            </tr>
-        `);
-    }
-    
-    tbody.innerHTML = rows.join('');
-}
 
         // Update charts on theme change
         function updateCharts() {
@@ -941,37 +951,9 @@ function renderMoodTable() {
             }
         }
 
-        // Add logout button
-        function addLogoutButton() {
-            const nav = document.querySelector('.flex.items-center.space-x-2.md\\:space-x-4');
-            if (!nav) return;
-            
-            if (document.getElementById('logout-btn')) return;
-            
-            const logoutBtn = document.createElement('button');
-            logoutBtn.id = 'logout-btn';
-            logoutBtn.onclick = logout;
-            logoutBtn.className = 'px-3 py-2 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition-colors';
-            logoutBtn.title = 'Logout';
-            logoutBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i>';
-            nav.appendChild(logoutBtn);
-        }
-
-        // Logout function
-        async function logout() {
-            try {
-                await fetch('/api/auth/logout', { method: 'POST' });
-                localStorage.removeItem('user');
-                window.location.href = '/';
-            } catch (error) {
-                console.error('Error logging out:', error);
-            }
-        }
-
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             loadData();
-            addLogoutButton();
         });
     </script>
 </body>
