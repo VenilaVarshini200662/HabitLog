@@ -26,7 +26,7 @@ if (!fs.existsSync(usersFilePath)) {
 // Middleware
 const corsOptions = {
     origin: process.env.NODE_ENV === 'production' 
-        ? [process.env.FRONTEND_URL || true] // Allow your deployed domain
+        ? [process.env.FRONTEND_URL || true]
         : 'http://localhost:3000',
     credentials: true,
     optionsSuccessStatus: 200
@@ -42,18 +42,16 @@ app.use(session({
     resave: false,
     saveUninitialized: false,
     cookie: { 
-        secure: process.env.NODE_ENV === 'production', // true in production (HTTPS)
+        secure: process.env.NODE_ENV === 'production',
         httpOnly: true, 
         maxAge: 24 * 60 * 60 * 1000,
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Important for cross-site
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         domain: process.env.NODE_ENV === 'production' ? process.env.COOKIE_DOMAIN : undefined
     }
 }));
+
 if (process.env.NODE_ENV === 'production') {
-    app.set('trust proxy', 1); // Trust first proxy
-}
-// Add after your other requires
-if (process.env.NODE_ENV === 'production') {
+    app.set('trust proxy', 1);
     // Force HTTPS redirect
     app.use((req, res, next) => {
         if (req.headers['x-forwarded-proto'] !== 'https') {
@@ -78,7 +76,7 @@ function calculateHabitStreak(habit) {
     const sortedDates = [...habit.completedDates].sort().reverse();
     const today = new Date().toISOString().split('T')[0];
     
-    // If not completed today, streak is 0 (unless we implement streak freezes)
+    // If not completed today, streak is 0
     if (!sortedDates.includes(today)) {
         return 0;
     }
@@ -135,7 +133,6 @@ function calculateLongestStreak(habit) {
             longestStreak = Math.max(longestStreak, currentStreak);
             currentStreak = 1;
         }
-        // If diffDays === 0, it's the same day (shouldn't happen with proper data)
         
         lastDate = currentDate;
     }
@@ -148,6 +145,7 @@ function calculateLongestStreak(habit) {
 
 /**
  * Calculate overall user streak (days with at least one habit completed)
+ * WITH STREAK FREEZE SUPPORT
  */
 function calculateOverallStreak(user) {
     if (!user.habits || user.habits.length === 0) {
@@ -164,10 +162,17 @@ function calculateOverallStreak(user) {
         }
     });
     
+    // Add streak freeze dates as virtual completions
+    if (user.streakFreezes && user.streakFreezes.appliedDays) {
+        user.streakFreezes.appliedDays.forEach(date => {
+            completionDates.add(date);
+        });
+    }
+    
     const sortedDates = Array.from(completionDates).sort().reverse();
     const today = new Date().toISOString().split('T')[0];
     
-    // If no completion today, streak is 0
+    // If no completion today and no freeze for today, streak is 0
     if (!sortedDates.includes(today)) {
         return 0;
     }
@@ -191,24 +196,34 @@ function calculateOverallStreak(user) {
 }
 
 /**
- * Recalculate all streaks for a user
+ * Recalculate all streaks for a user and save to database
  * This ensures streak data is always consistent
  */
-function recalculateAllStreaks(user) {
+function recalculateAndSaveUserStreaks(user) {
     if (!user.habits) return user;
     
     let overallLongestStreak = 0;
     
     user.habits.forEach(habit => {
+        // Ensure completedDates exists
+        if (!habit.completedDates) {
+            habit.completedDates = [];
+        }
+        
         // Calculate current streak
-        habit.streak = calculateHabitStreak(habit);
+        const newStreak = calculateHabitStreak(habit);
         
         // Calculate longest streak
-        const longest = calculateLongestStreak(habit);
-        habit.longestStreak = Math.max(habit.longestStreak || 0, longest);
+        const newLongestStreak = calculateLongestStreak(habit);
+        
+        // Update streak values
+        habit.streak = newStreak;
+        habit.longestStreak = Math.max(habit.longestStreak || 0, newLongestStreak);
         
         // Track overall longest streak for user status
         overallLongestStreak = Math.max(overallLongestStreak, habit.longestStreak);
+        
+        console.log(`Recalculated streak for ${habit.name}: current=${habit.streak}, longest=${habit.longestStreak}, completed=${habit.completedDates.length}`);
     });
     
     // Update user status based on longest streak
@@ -252,7 +267,7 @@ app.post('/api/auth/signup', async (req, res) => {
             email,
             password, // In production, hash this!
             age: parseInt(age),
-            dob: dob, // Store date of birth
+            dob: dob,
             category,
             habits: [],
             rewards: {
@@ -288,7 +303,7 @@ app.post('/api/auth/signup', async (req, res) => {
             username, 
             email, 
             age, 
-            dob,  // Include dob in session
+            dob,
             category, 
             language: newUser.settings.language 
         };
@@ -300,7 +315,7 @@ app.post('/api/auth/signup', async (req, res) => {
                 username: newUser.username,
                 email: newUser.email,
                 age: newUser.age,
-                dob: newUser.dob,  // Return dob to client
+                dob: newUser.dob,
                 category: newUser.category,
                 language: newUser.settings.language,
                 createdAt: newUser.createdAt
@@ -322,8 +337,8 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
         
-        // FIX: Recalculate all streaks on login to ensure data consistency
-        const updatedUser = recalculateAllStreaks(user);
+        // IMPORTANT: Recalculate all streaks on login to ensure data consistency
+        const updatedUser = recalculateAndSaveUserStreaks(user);
         
         // Update last login
         updatedUser.lastLogin = new Date().toISOString();
@@ -332,6 +347,7 @@ app.post('/api/auth/login', async (req, res) => {
         const userIndex = users.findIndex(u => u.id === user.id);
         users[userIndex] = updatedUser;
         
+        // Save to file immediately
         fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
         
         req.session.userId = updatedUser.id;
@@ -351,7 +367,14 @@ app.post('/api/auth/login', async (req, res) => {
                 return res.status(500).json({ error: 'Session error' });
             }
             
-            console.log('Session saved successfully for user:', updatedUser.email);
+            console.log('Login successful for user:', updatedUser.email);
+            console.log('User streak data:', updatedUser.habits.map(h => ({ 
+                name: h.name, 
+                streak: h.streak,
+                longest: h.longestStreak,
+                completedDates: h.completedDates?.length || 0,
+                today: h.completedDates?.includes(new Date().toISOString().split('T')[0])
+            })));
             
             // Remove sensitive information
             const { password, ...userWithoutPassword } = updatedUser;
@@ -386,9 +409,11 @@ app.get('/api/user', (req, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
         
-        // FIX: Recalculate streaks before sending user data
-        const updatedUser = recalculateAllStreaks(users[userIndex]);
+        // IMPORTANT: Recalculate streaks before sending user data
+        const updatedUser = recalculateAndSaveUserStreaks(users[userIndex]);
         users[userIndex] = updatedUser;
+        
+        // Save to file
         fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
         
         // Remove sensitive information
@@ -411,10 +436,19 @@ app.get('/api/habits', (req, res) => {
         
         if (userIndex === -1) return res.status(404).json({ error: 'User not found' });
         
-        // FIX: Recalculate streaks before sending habits
-        const updatedUser = recalculateAllStreaks(users[userIndex]);
+        // IMPORTANT: Recalculate streaks before sending habits
+        const updatedUser = recalculateAndSaveUserStreaks(users[userIndex]);
         users[userIndex] = updatedUser;
+        
+        // Save to file
         fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
+        
+        console.log('Sending habits with streak data:', updatedUser.habits.map(h => ({
+            name: h.name,
+            streak: h.streak,
+            longest: h.longestStreak,
+            completedToday: h.completedDates?.includes(new Date().toISOString().split('T')[0])
+        })));
         
         res.json(updatedUser.habits || []);
     } catch (error) {
@@ -531,16 +565,23 @@ app.post('/api/habits/:id/toggle', (req, res) => {
         
         if (dateIndex === -1) {
             habit.completedDates.push(targetDate);
+            console.log(`Added completion for ${targetDate} to habit ${habit.name}`);
         } else {
             habit.completedDates.splice(dateIndex, 1);
+            console.log(`Removed completion for ${targetDate} from habit ${habit.name}`);
         }
         
         // Sort dates for consistency
         habit.completedDates.sort();
         
-        // FIX: Recalculate streaks using the dedicated functions
-        habit.streak = calculateHabitStreak(habit);
-        habit.longestStreak = calculateLongestStreak(habit);
+        // IMPORTANT: Recalculate streaks using the dedicated functions
+        const newStreak = calculateHabitStreak(habit);
+        const newLongestStreak = calculateLongestStreak(habit);
+        
+        habit.streak = newStreak;
+        habit.longestStreak = Math.max(habit.longestStreak || 0, newLongestStreak);
+        
+        console.log(`Habit ${habit.name}: new streak = ${habit.streak}, longest = ${habit.longestStreak}`);
         
         // Check for streak milestones and update rewards
         const rewards = checkAndUpdateRewards(users[userIndex], habit);
@@ -552,8 +593,9 @@ app.post('/api/habits/:id/toggle', (req, res) => {
         checkAndAwardFreezes(users[userIndex]);
         
         // Recalculate overall user streaks
-        recalculateAllStreaks(users[userIndex]);
+        recalculateAndSaveUserStreaks(users[userIndex]);
         
+        // IMPORTANT: Save to file immediately
         fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
         
         // Calculate overall streak for response
@@ -672,6 +714,8 @@ function checkAndAwardFreezes(user) {
                             type: 'earned',
                             streakLength: consecutiveCount + 1
                         });
+                        
+                        console.log(`Awarded streak freeze to ${user.username}. Total: ${user.streakFreezes.available}`);
                     }
                 }
             } else {
@@ -751,10 +795,8 @@ function sendMissedHabitReminders() {
             );
             
             if (incompleteHabits.length > 0) {
-                // In a real app, you'd send email/SMS/push notification here
                 console.log(`Reminder for ${user.username}: You have ${incompleteHabits.length} incomplete habits`);
                 
-                // Mark as reminded
                 incompleteHabits.forEach(habit => {
                     habit.lastReminded = new Date().toISOString();
                 });
@@ -856,7 +898,6 @@ app.post('/api/streak-freeze/apply', (req, res) => {
 
 // =========== AI CHATBOT ROUTES ===========
 app.post('/api/chatbot/ask', (req, res) => {
-    // Check authentication
     if (!req.session || !req.session.userId) {
         return res.status(401).json({ error: 'Not authenticated' });
     }
@@ -864,12 +905,10 @@ app.post('/api/chatbot/ask', (req, res) => {
     try {
         const { message } = req.body;
         
-        // Validate message
         if (!message || typeof message !== 'string') {
             return res.status(400).json({ error: 'Invalid message format' });
         }
         
-        // Read users data
         const users = JSON.parse(fs.readFileSync(usersFilePath, 'utf8'));
         const user = users.find(u => u.id === req.session.userId);
         
@@ -877,7 +916,6 @@ app.post('/api/chatbot/ask', (req, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
         
-        // Generate response
         const response = generateChatbotResponse(message, user);
         res.json({ response });
         
@@ -887,28 +925,22 @@ app.post('/api/chatbot/ask', (req, res) => {
     }
 });
 
-// Enhanced chatbot response generator with correct age from DOB
 function generateChatbotResponse(message, user) {
     const lowerMsg = message.toLowerCase().trim();
     
-    // ===== FIXED: Calculate age from date of birth =====
     let age = user.age || 0;
     
-    // If we have dob, calculate current age (in case user had birthday since signup)
     if (user.dob) {
         const birthDate = new Date(user.dob);
         const today = new Date();
         age = today.getFullYear() - birthDate.getFullYear();
         const monthDiff = today.getMonth() - birthDate.getMonth();
         
-        // Adjust age if birthday hasn't occurred yet this year
         if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
             age--;
         }
     }
     
-    // ===== FIXED: Calculate main streak correctly =====
-    // Get all unique dates where at least one habit was completed
     const completionDates = new Set();
     user.habits.forEach(habit => {
         if (habit.completedDates && Array.isArray(habit.completedDates)) {
@@ -918,7 +950,6 @@ function generateChatbotResponse(message, user) {
         }
     });
     
-    // Calculate main streak (consecutive days with at least one habit)
     const sortedDates = Array.from(completionDates).sort();
     let mainStreak = 0;
     const today = new Date().toISOString().split('T')[0];
@@ -940,19 +971,16 @@ function generateChatbotResponse(message, user) {
         }
     }
     
-    // Calculate total streak (sum of all habit streaks) - for reference
     const bestStreak = Math.max(...user.habits.map(h => h.longestStreak || 0), 0);
     const today_date = new Date().toISOString().split('T')[0];
     const completedToday = user.habits.filter(h => h.completedDates?.includes(today_date)).length;
     
-    // Get age category based on calculated age
     let category = '';
     if (age < 13) category = 'child';
     else if (age >= 13 && age < 20) category = 'teen';
     else if (age >= 20 && age < 60) category = 'adult';
     else category = 'senior';
     
-    // Response templates
     const responses = {
         greeting: `Hello ${user.username}! 👋 I'm your HabitLog assistant. How can I help you today?`,
         name: `Your name is ${user.username}`,
@@ -976,7 +1004,6 @@ function generateChatbotResponse(message, user) {
         tips: "Here are some tips for building habits: 1. Start small 2. Be consistent 3. Track your progress 4. Celebrate small wins 5. Don't break the chain! 🌟"
     };
     
-    // Select the appropriate response based on intent
     let responseKey = 'unknown';
     
     if (lowerMsg.includes('hello') || lowerMsg.includes('hi') || lowerMsg.includes('hey')) {
@@ -1026,9 +1053,7 @@ function generateChatbotResponse(message, user) {
         responseKey = 'help';
     }
     
-    // Get the response template
     let response = responses[responseKey] || responses.unknown;
-    
     return response;
 }
 
