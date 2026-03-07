@@ -64,10 +64,10 @@ if (process.env.NODE_ENV === 'production') {
 // =========== STREAK CALCULATION FUNCTIONS ===========
 
 /**
- * Calculate current streak for a habit
- * Returns the number of consecutive days the habit has been completed up to today
+ * Calculate current streak for a habit with streak freeze support
+ * This function properly handles streak freezes and maintains streak across logins
  */
-function calculateHabitStreak(habit) {
+function calculateHabitStreak(habit, userStreakFreezes = null) {
     if (!habit.completedDates || habit.completedDates.length === 0) {
         return 0;
     }
@@ -75,27 +75,48 @@ function calculateHabitStreak(habit) {
     // Sort dates in descending order (newest first)
     const sortedDates = [...habit.completedDates].sort().reverse();
     const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
     
-    // If not completed today, streak is 0
-    if (!sortedDates.includes(today)) {
-        return 0;
-    }
+    console.log(`Calculating streak for ${habit.name}:`);
+    console.log(`- Today: ${today}, completed: ${sortedDates.includes(today)}`);
+    console.log(`- Completed dates: ${sortedDates.slice(0, 5).join(', ')}`);
     
-    let streak = 1; // Started with today
+    let streak = 0;
     let currentDate = today;
+    let missedDays = 0;
+    const maxMissedDays = 1; // Allow 1 missed day (for streak freeze)
     
-    // Count consecutive days backwards
+    // Check if we have streak freezes available
+    const hasFreeze = userStreakFreezes && userStreakFreezes.available > 0;
+    
+    // Start counting from today backwards
     while (true) {
+        if (sortedDates.includes(currentDate)) {
+            // Completed this day
+            streak++;
+            missedDays = 0;
+            console.log(`- ${currentDate}: completed, streak=${streak}`);
+        } else {
+            // Not completed this day
+            if (missedDays === 0 && hasFreeze) {
+                // Use a streak freeze for the first missed day
+                console.log(`- ${currentDate}: missed but using streak freeze`);
+                streak++;
+                missedDays = 1;
+            } else {
+                // No freeze available or already used one
+                console.log(`- ${currentDate}: missed, streak ends`);
+                break;
+            }
+        }
+        
         // Move to previous day
         const prevDate = new Date(currentDate);
         prevDate.setDate(prevDate.getDate() - 1);
         currentDate = prevDate.toISOString().split('T')[0];
         
-        if (sortedDates.includes(currentDate)) {
-            streak++;
-        } else {
-            break;
-        }
+        // Safety check to prevent infinite loop
+        if (streak > 365) break;
     }
     
     return streak;
@@ -103,7 +124,6 @@ function calculateHabitStreak(habit) {
 
 /**
  * Calculate longest streak for a habit
- * Returns the maximum number of consecutive days the habit has ever been completed
  */
 function calculateLongestStreak(habit) {
     if (!habit.completedDates || habit.completedDates.length === 0) {
@@ -172,24 +192,54 @@ function calculateOverallStreak(user) {
     const sortedDates = Array.from(completionDates).sort().reverse();
     const today = new Date().toISOString().split('T')[0];
     
-    // If no completion today and no freeze for today, streak is 0
+    console.log(`Overall streak calculation: today=${today}`);
+    console.log(`Completion dates: ${sortedDates.slice(0, 10).join(', ')}`);
+    
+    // If no completion today and no freeze for today, check yesterday with freeze
     if (!sortedDates.includes(today)) {
-        return 0;
+        // Check if we have a freeze available for today
+        const hasFreeze = user.streakFreezes && user.streakFreezes.available > 0;
+        
+        if (!hasFreeze) {
+            console.log('No completion today and no freeze available - streak=0');
+            return 0;
+        } else {
+            console.log('No completion today but freeze available - will check yesterday');
+        }
     }
     
-    let streak = 1;
+    let streak = 0;
     let currentDate = today;
+    let missedDays = 0;
+    const maxMissedDays = 1; // Allow 1 missed day with freeze
     
     while (true) {
+        if (sortedDates.includes(currentDate)) {
+            // Completed this day (or has freeze applied)
+            streak++;
+            missedDays = 0;
+            console.log(`- ${currentDate}: completed, streak=${streak}`);
+        } else {
+            // Not completed this day
+            if (missedDays === 0 && user.streakFreezes && user.streakFreezes.available > 0) {
+                // Use a streak freeze for the first missed day
+                console.log(`- ${currentDate}: missed but using streak freeze`);
+                streak++;
+                missedDays = 1;
+            } else {
+                // No freeze available or already used one
+                console.log(`- ${currentDate}: missed, streak ends`);
+                break;
+            }
+        }
+        
+        // Move to previous day
         const prevDate = new Date(currentDate);
         prevDate.setDate(prevDate.getDate() - 1);
         currentDate = prevDate.toISOString().split('T')[0];
         
-        if (sortedDates.includes(currentDate)) {
-            streak++;
-        } else {
-            break;
-        }
+        // Safety check
+        if (streak > 365) break;
     }
     
     return streak;
@@ -203,6 +253,9 @@ function recalculateAndSaveUserStreaks(user) {
     if (!user.habits) return user;
     
     let overallLongestStreak = 0;
+    const today = new Date().toISOString().split('T')[0];
+    
+    console.log(`\n========== RECALCULATING STREAKS FOR ${user.username} ==========`);
     
     user.habits.forEach(habit => {
         // Ensure completedDates exists
@@ -210,8 +263,11 @@ function recalculateAndSaveUserStreaks(user) {
             habit.completedDates = [];
         }
         
-        // Calculate current streak
-        const newStreak = calculateHabitStreak(habit);
+        // Store old streak for comparison
+        const oldStreak = habit.streak;
+        
+        // Calculate current streak with freeze support
+        const newStreak = calculateHabitStreak(habit, user.streakFreezes);
         
         // Calculate longest streak
         const newLongestStreak = calculateLongestStreak(habit);
@@ -223,18 +279,28 @@ function recalculateAndSaveUserStreaks(user) {
         // Track overall longest streak for user status
         overallLongestStreak = Math.max(overallLongestStreak, habit.longestStreak);
         
-        console.log(`Recalculated streak for ${habit.name}: current=${habit.streak}, longest=${habit.longestStreak}, completed=${habit.completedDates.length}`);
+        console.log(`Habit "${habit.name}":`);
+        console.log(`  - Old streak: ${oldStreak}`);
+        console.log(`  - New streak: ${habit.streak}`);
+        console.log(`  - Longest: ${habit.longestStreak}`);
+        console.log(`  - Completed today: ${habit.completedDates.includes(today)}`);
+        console.log(`  - Total completions: ${habit.completedDates.length}`);
     });
     
     // Update user status based on longest streak
     if (user.rewards) {
+        const oldStatus = user.rewards.status;
         if (overallLongestStreak >= 365) user.rewards.status = 'legend';
         else if (overallLongestStreak >= 100) user.rewards.status = 'master';
         else if (overallLongestStreak >= 50) user.rewards.status = 'expert';
         else if (overallLongestStreak >= 30) user.rewards.status = 'advanced';
         else if (overallLongestStreak >= 7) user.rewards.status = 'star';
         else user.rewards.status = 'beginner';
+        
+        console.log(`User status: ${oldStatus} -> ${user.rewards.status}`);
     }
+    
+    console.log('========================================\n');
     
     return user;
 }
@@ -337,6 +403,8 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
         
+        console.log(`\n========== USER LOGIN: ${user.email} ==========`);
+        
         // IMPORTANT: Recalculate all streaks on login to ensure data consistency
         const updatedUser = recalculateAndSaveUserStreaks(user);
         
@@ -368,13 +436,14 @@ app.post('/api/auth/login', async (req, res) => {
             }
             
             console.log('Login successful for user:', updatedUser.email);
-            console.log('User streak data:', updatedUser.habits.map(h => ({ 
+            console.log('Final streak data:', updatedUser.habits.map(h => ({ 
                 name: h.name, 
                 streak: h.streak,
                 longest: h.longestStreak,
                 completedDates: h.completedDates?.length || 0,
                 today: h.completedDates?.includes(new Date().toISOString().split('T')[0])
             })));
+            console.log('========================================\n');
             
             // Remove sensitive information
             const { password, ...userWithoutPassword } = updatedUser;
@@ -574,8 +643,8 @@ app.post('/api/habits/:id/toggle', (req, res) => {
         // Sort dates for consistency
         habit.completedDates.sort();
         
-        // IMPORTANT: Recalculate streaks using the dedicated functions
-        const newStreak = calculateHabitStreak(habit);
+        // IMPORTANT: Recalculate streaks using the dedicated functions with freeze support
+        const newStreak = calculateHabitStreak(habit, users[userIndex].streakFreezes);
         const newLongestStreak = calculateLongestStreak(habit);
         
         habit.streak = newStreak;
