@@ -95,7 +95,7 @@ Respond in English only.`;
             console.log('🤖 Sending to Groq...');
             const c = await this.groq.chat.completions.create({
                 messages,
-                model: 'llama-3.3-70b-versatile',
+                model: 'openai/gpt-oss-120b',
                 temperature: 0.7,
                 max_tokens: 300,
                 top_p: 0.9
