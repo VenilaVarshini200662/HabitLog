@@ -1,0 +1,978 @@
+<!-- public/mood-tracker.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mood & Streak Analysis - HabitLog</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src="/js/translations.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: { 50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81' },
+                        accent: { 50: '#f0fdfa', 100: '#ccfbf1', 200: '#99f6e4', 300: '#5eead4', 400: '#2dd4bf', 500: '#14b8a6', 600: '#0d9488', 700: '#0f766e', 800: '#115e59', 900: '#134e4a' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        .streak-freeze-badge {
+            background: linear-gradient(135deg, #60a5fa, #3b82f6);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        .freeze-tag {
+            background-color: #93c5fd;
+            color: #1e40af;
+            font-size: 0.6rem;
+            padding: 0.1rem 0.3rem;
+            border-radius: 0.25rem;
+            margin-left: 0.25rem;
+            font-weight: 600;
+        }
+        .dark .freeze-tag {
+            background-color: #1e3a8a;
+            color: #bfdbfe;
+        }
+        .mood-good {
+            background-color: #10b981;
+            color: white;
+        }
+        .mood-bad {
+            background-color: #ef4444;
+            color: white;
+        }
+        /* Navigation link styles */
+        .nav-link {
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 2px;
+            background: linear-gradient(to right, #6366f1, #14b8a6);
+            transition: width 0.3s ease;
+        }
+        
+        .nav-link:hover::after {
+            width: 80%;
+        }
+        
+        .nav-link.active {
+            color: #4f46e5;
+        }
+        
+        .dark .nav-link.active {
+            color: #818cf8;
+        }
+        
+        .nav-link.active::after {
+            width: 80%;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+    <!-- Error Toast -->
+    <div id="errorToast" class="fixed top-4 right-4 z-50 hidden">
+        <div class="bg-red-500 text-white px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3">
+            <i class="fas fa-exclamation-circle text-xl"></i>
+            <span id="errorMessage">Error occurred</span>
+            <button onclick="hideErrorToast()" class="ml-4 hover:text-red-100">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Success Toast -->
+    <div id="successToast" class="fixed top-4 right-4 z-50 hidden">
+        <div class="bg-green-500 text-white px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3">
+            <i class="fas fa-check-circle text-xl"></i>
+            <span id="successMessage">Success!</span>
+            <button onclick="hideSuccessToast()" class="ml-4 hover:text-green-100">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 flex flex-col items-center">
+            <div class="w-16 h-16 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin mb-4"></div>
+            <p class="text-gray-700 dark:text-gray-300">Loading...</p>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+   <!-- public/index.html - Updated Responsive Navigation -->
+<nav class="fixed w-full z-40 glass-effect transition-all duration-300">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center h-14 sm:h-16">
+            <!-- Logo -->
+            <div class="flex items-center space-x-2">
+                <img src="habitlog.png" alt="HabitLog" class="h-8 sm:h-10 md:h-12 w-auto">
+                <span class="text-lg sm:text-xl md:text-2xl font-bold bg-gradient-to-r from-primary-600 to-accent-500 bg-clip-text text-transparent" data-i18n="appName">
+                    HabitLog
+                </span>
+            </div>
+
+            <!-- Desktop Navigation Links (hidden on mobile) -->
+            <div class="hidden md:flex items-center space-x-4">
+                <a href="/dashboard" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Dashboard</a>
+                <a href="/calendar" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Calendar</a>
+                <a href="/stats" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                    <i class="fas fa-chart-pie mr-1"></i> Stats
+                </a>
+                <a href="/progress" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Progress</a>
+                <a href="/mood-tracker" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                    <i class="fas fa-smile mr-1"></i> Mood
+                </a>
+                <a href="/settings" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Settings</a>
+            </div>
+
+            <!-- Right side buttons -->
+            <div class="flex items-center space-x-2 sm:space-x-4">
+                <!-- Theme Toggle -->
+                <button id="themeToggle" class="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-all duration-300 transform hover:scale-110">
+                    <i class="fas fa-moon dark:hidden text-gray-700 text-sm sm:text-base"></i>
+                    <i class="fas fa-sun hidden dark:block text-yellow-400 text-sm sm:text-base"></i>
+                </button>
+
+                <!-- Logout Button (visible on desktop) -->
+                <button id="logoutBtn" class="hidden sm:block px-3 sm:px-4 py-1.5 sm:py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-all duration-300 transform hover:scale-105 text-xs sm:text-sm">
+                    <i class="fas fa-sign-out-alt mr-1"></i> Logout
+                </button>
+
+                <!-- Mobile Menu Button (only visible on mobile) -->
+                <button id="mobileMenuBtn" class="md:hidden p-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                    <i class="fas fa-bars text-lg sm:text-xl"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Menu Panel (hidden by default) -->
+    <div id="mobileMenu" class="md:hidden bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 shadow-lg transform transition-all duration-300 ease-in-out overflow-hidden" style="max-height: 0; opacity: 0;">
+        <div class="px-4 py-3 space-y-2">
+            <a href="/dashboard" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-home w-6 mr-3"></i> Dashboard
+            </a>
+            <a href="/calendar" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-calendar w-6 mr-3"></i> Calendar
+            </a>
+            <a href="/stats" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-chart-pie w-6 mr-3"></i> Statistics
+            </a>
+            <a href="/progress" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-chart-line w-6 mr-3"></i> Progress
+            </a>
+            <a href="/mood-tracker" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-smile w-6 mr-3"></i> Mood Tracker
+            </a>
+            <a href="/settings" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-cog w-6 mr-3"></i> Settings
+            </a>
+            
+            <!-- Divider -->
+            <div class="border-t border-gray-200 dark:border-gray-700 my-2"></div>
+            
+            <!-- Logout button in mobile menu -->
+            <button id="mobileLogoutBtn" class="w-full px-4 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm flex items-center justify-center">
+                <i class="fas fa-sign-out-alt mr-2"></i> Logout
+            </button>
+        </div>
+    </div>
+</nav>
+
+
+    <!-- Main Content -->
+    <main class="pt-20 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">Mood & Streak Analysis</h1>
+            <p class="text-gray-600 dark:text-gray-400">Track how your mood correlates with your habits and manage streak freezes</p>
+        </div>
+
+        <!-- Streak Freeze Status Card -->
+        <div class="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl p-6 shadow-md mb-8 text-white">
+            <div class="flex items-center justify-between flex-wrap gap-4">
+                <div class="flex items-center space-x-4">
+                    <div class="text-4xl">❄️</div>
+                    <div>
+                        <h3 class="text-lg font-semibold">Streak Freeze Available</h3>
+                        <div class="flex items-center space-x-2 mt-1">
+                            <div class="flex space-x-1">
+                                <div id="freezeDot1" class="w-4 h-4 rounded-full bg-white bg-opacity-30"></div>
+                                <div id="freezeDot2" class="w-4 h-4 rounded-full bg-white bg-opacity-30"></div>
+                            </div>
+                            <span id="freezeCount" class="text-sm">0/2 Freezes Available</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="text-sm max-w-md">
+                    <p class="opacity-90">❄️ Earn 1 streak freeze for every 3-day continuous streak. Maximum 2 freezes can be stored.</p>
+                    <p class="text-xs mt-1 opacity-75">Freezes automatically protect your streak when you miss a day</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Overview -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-500 dark:text-gray-400 text-sm">Current Streak</p>
+                        <p class="text-3xl font-bold text-gray-900 dark:text-white" id="currentStreak">0</p>
+                    </div>
+                    <div class="text-4xl text-accent-500">🔥</div>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-500 dark:text-gray-400 text-sm">Freezes Used</p>
+                        <p class="text-3xl font-bold text-gray-900 dark:text-white" id="freezesUsed">0</p>
+                    </div>
+                    <div class="text-4xl text-blue-500">❄️</div>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-500 dark:text-gray-400 text-sm">Positive Days</p>
+                        <p class="text-3xl font-bold text-green-600" id="positiveDays">0</p>
+                    </div>
+                    <div class="text-4xl">😊</div>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-500 dark:text-gray-400 text-sm">Negative Days</p>
+                        <p class="text-3xl font-bold text-red-600" id="negativeDays">0</p>
+                    </div>
+                    <div class="text-4xl">😔</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <!-- Mood vs Habits Chart -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
+                <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Mood vs Habits Completed</h2>
+                <div class="chart-container">
+                    <canvas id="moodHabitChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Mood Distribution Pie Chart -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
+                <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Mood Distribution</h2>
+                <div class="chart-container">
+                    <canvas id="moodPieChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Streak Freeze History -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md mb-8">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Streak Freeze History</h2>
+            <div id="freezeHistory" class="space-y-2">
+                <!-- Freeze history will be dynamically inserted -->
+            </div>
+        </div>
+
+        <!-- Recent Mood Entries -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Recent Mood & Habit Activity</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead>
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Habits Completed</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Mood</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Freeze Applied</th>
+                        </tr>
+                    </thead>
+                    <tbody id="moodTableBody" class="divide-y divide-gray-200 dark:divide-gray-700">
+                        <!-- Table rows will be dynamically inserted -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Floating AI Chat Widget -->
+    <script src="/js/chat-widget.js"></script>
+    <!-- Page Transitions -->
+    <script src="/js/page-transitions.js"></script>
+
+    <script>
+    // Mobile Menu Toggle
+    document.addEventListener('DOMContentLoaded', function() {
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const mobileMenu = document.getElementById('mobileMenu');
+        
+        if (mobileMenuBtn && mobileMenu) {
+            mobileMenuBtn.addEventListener('click', function() {
+                // Toggle menu
+                if (mobileMenu.style.maxHeight === '0px' || mobileMenu.style.maxHeight === '') {
+                    mobileMenu.style.maxHeight = '500px';
+                    mobileMenu.style.opacity = '1';
+                    mobileMenuBtn.innerHTML = '<i class="fas fa-times text-lg sm:text-xl"></i>';
+                } else {
+                    mobileMenu.style.maxHeight = '0px';
+                    mobileMenu.style.opacity = '0';
+                    mobileMenuBtn.innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                }
+            });
+
+            // Close menu when clicking outside
+            document.addEventListener('click', function(event) {
+                if (!mobileMenu.contains(event.target) && !mobileMenuBtn.contains(event.target)) {
+                    mobileMenu.style.maxHeight = '0px';
+                    mobileMenu.style.opacity = '0';
+                    mobileMenuBtn.innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                }
+            });
+
+            // Close menu on window resize (if switching to desktop)
+            window.addEventListener('resize', function() {
+                if (window.innerWidth >= 768) {
+                    mobileMenu.style.maxHeight = '0px';
+                    mobileMenu.style.opacity = '0';
+                    if (mobileMenuBtn) {
+                        mobileMenuBtn.innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                    }
+                }
+            });
+        }
+
+        // Logout functionality
+        const logoutBtn = document.getElementById('logoutBtn');
+        const mobileLogoutBtn = document.getElementById('mobileLogoutBtn');
+        
+        async function handleLogout() {
+            try {
+                // Close mobile menu if open
+                if (mobileMenu) {
+                    mobileMenu.style.maxHeight = '0px';
+                    mobileMenu.style.opacity = '0';
+                    if (mobileMenuBtn) {
+                        mobileMenuBtn.innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                    }
+                }
+                
+                // Call logout API
+                const response = await fetch('/api/auth/logout', { 
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    // Clear user data from localStorage
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('language');
+                    
+                    // Redirect to landing page
+                    window.location.href = '/';
+                } else {
+                    console.error('Logout failed');
+                    // Still redirect even if API fails
+                    window.location.href = '/';
+                }
+            } catch (error) {
+                console.error('Error logging out:', error);
+                // Redirect anyway
+                window.location.href = '/';
+            }
+        }
+
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', handleLogout);
+        }
+
+        if (mobileLogoutBtn) {
+            mobileLogoutBtn.addEventListener('click', handleLogout);
+        }
+    });
+        // Theme Toggle
+        const themeToggle = document.getElementById('themeToggle');
+        const html = document.documentElement;
+        
+        themeToggle.addEventListener('click', () => {
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+            updateCharts();
+        });
+
+        if (localStorage.getItem('theme') === 'dark') {
+            html.classList.add('dark');
+        }
+
+        // Toast functions
+        function showError(message) {
+            const toast = document.getElementById('errorToast');
+            document.getElementById('errorMessage').textContent = message;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 5000);
+        }
+
+        function hideErrorToast() {
+            document.getElementById('errorToast').classList.add('hidden');
+        }
+
+        function showSuccess(message) {
+            const toast = document.getElementById('successToast');
+            document.getElementById('successMessage').textContent = message;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+
+        function hideSuccessToast() {
+            document.getElementById('successToast').classList.add('hidden');
+        }
+
+        function showLoading() {
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+            document.getElementById('loadingOverlay').classList.add('flex');
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+            document.getElementById('loadingOverlay').classList.remove('flex');
+        }
+
+        // State
+        let habits = [];
+        let moodHabitChart, moodPieChart;
+        let streakData = {
+            currentStreak: 0,
+            freezesAvailable: 0,
+            freezesUsed: 0,
+            freezeHistory: [],
+            streakFreezeDays: []
+        };
+
+        // Load data
+        async function loadData() {
+            try {
+                showLoading();
+                
+                // Load habits
+                const habitsResponse = await fetch('/api/habits');
+                if (habitsResponse.ok) {
+                    habits = await habitsResponse.json();
+                }
+                
+                // Load streak freeze data
+                await loadStreakFreezeData();
+                
+                // Calculate streak
+                calculateCurrentStreak();
+                
+                // Update UI
+                updateStats();
+                initCharts();
+                renderFreezeHistory();
+                renderMoodTable();
+                
+                hideLoading();
+            } catch (error) {
+                hideLoading();
+                console.error('Error loading data:', error);
+                showError('Failed to load data');
+            }
+        }
+
+        // Load streak freeze data from server
+        async function loadStreakFreezeData() {
+            try {
+                const response = await fetch('/api/streak-freeze');
+                if (response.ok) {
+                    const data = await response.json();
+                    streakData = {
+                        ...streakData,
+                        freezesAvailable: data.available || 0,
+                        freezesUsed: data.used || 0,
+                        freezeHistory: data.history || [],
+                        streakFreezeDays: data.appliedDays || []
+                    };
+                }
+            } catch (error) {
+                console.error('Error loading streak freeze data:', error);
+            }
+        }
+
+        // Calculate current streak with freeze support
+        function calculateCurrentStreak() {
+            const today = new Date().toISOString().split('T')[0];
+            
+            // Get all unique dates where at least one habit was completed
+            const completionDates = new Set();
+            habits.forEach(habit => {
+                if (habit.completedDates) {
+                    habit.completedDates.forEach(date => completionDates.add(date));
+                }
+            });
+            
+            // Add freeze dates as "virtual" completions for streak calculation
+            const allActiveDates = new Set([...completionDates, ...streakData.streakFreezeDays]);
+            
+            const sortedDates = Array.from(allActiveDates).sort();
+            let streak = 0;
+            
+            if (sortedDates.includes(today) || streakData.streakFreezeDays.includes(today)) {
+                streak = 1;
+                let checkDate = new Date(today);
+                
+                for (let i = 1; i <= 365; i++) {
+                    checkDate.setDate(checkDate.getDate() - 1);
+                    const dateStr = checkDate.toISOString().split('T')[0];
+                    
+                    if (sortedDates.includes(dateStr)) {
+                        streak++;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            
+            streakData.currentStreak = streak;
+        }
+
+        // Update statistics
+        // Update statistics - FIXED VERSION
+// Update statistics - FIXED VERSION
+function updateStats() {
+    document.getElementById('currentStreak').textContent = streakData.currentStreak;
+    document.getElementById('freezesUsed').textContent = streakData.freezesUsed;
+    
+    // Calculate mood stats - count DAYS, not individual feedback
+    const feedback = JSON.parse(localStorage.getItem('habitFeedback') || '{}');
+    
+    // Track unique days and their mood
+    const dayMoodMap = new Map(); // date -> { good: count, bad: count }
+    
+    // Aggregate feedback by day
+    Object.values(feedback).forEach(habitFeedbacks => {
+        habitFeedbacks.forEach(f => {
+            const date = f.date.split('T')[0]; // Get just the date part
+            
+            if (!dayMoodMap.has(date)) {
+                dayMoodMap.set(date, { good: 0, bad: 0 });
+            }
+            
+            const dayData = dayMoodMap.get(date);
+            if (f.type === 'good') {
+                dayData.good++;
+            } else if (f.type === 'bad') {
+                dayData.bad++;
+            }
+        });
+    });
+    
+    // Count positive and negative DAYS
+    let positiveDays = 0;
+    let negativeDays = 0;
+    
+    dayMoodMap.forEach((dayData, date) => {
+        if (dayData.good > dayData.bad) {
+            positiveDays++;  // This day was overall positive
+            console.log(`Positive day: ${date} (${dayData.good} good, ${dayData.bad} bad)`);
+        } else if (dayData.bad > dayData.good) {
+            negativeDays++;  // This day was overall negative
+            console.log(`Negative day: ${date} (${dayData.good} good, ${dayData.bad} bad)`);
+        }
+        // If equal, it's neutral - don't count as either
+    });
+    
+    console.log(`Total positive days: ${positiveDays}, Total negative days: ${negativeDays}`);
+    
+    document.getElementById('positiveDays').textContent = positiveDays;
+    document.getElementById('negativeDays').textContent = negativeDays;
+    
+    updateFreezeDisplay();
+}
+        // Update freeze display
+        function updateFreezeDisplay() {
+            document.getElementById('freezeCount').textContent = `${streakData.freezesAvailable}/2 Freezes Available`;
+            
+            // Update freeze dots
+            const dot1 = document.getElementById('freezeDot1');
+            const dot2 = document.getElementById('freezeDot2');
+            
+            if (dot1) {
+                dot1.className = `w-4 h-4 rounded-full ${streakData.freezesAvailable >= 1 ? 'bg-white' : 'bg-white bg-opacity-30'}`;
+            }
+            if (dot2) {
+                dot2.className = `w-4 h-4 rounded-full ${streakData.freezesAvailable >= 2 ? 'bg-white' : 'bg-white bg-opacity-30'}`;
+            }
+        }
+
+        // Initialize charts
+        // Initialize charts
+function initCharts() {
+    const isDark = html.classList.contains('dark');
+    const textColor = isDark ? '#e5e7eb' : '#374151';
+    const gridColor = isDark ? '#374151' : '#e5e7eb';
+
+    // Get last 14 days of data
+    const labels = [];
+    const habitData = [];
+    const moodData = [];
+    
+    const today = new Date();
+    
+    // First, aggregate all feedback by day for mood calculation
+    const feedback = JSON.parse(localStorage.getItem('habitFeedback') || '{}');
+    const dayFeedback = new Map(); // date -> { good: count, bad: count }
+    
+    Object.values(feedback).forEach(habitFeedbacks => {
+        habitFeedbacks.forEach(f => {
+            const date = f.date.split('T')[0];
+            
+            if (!dayFeedback.has(date)) {
+                dayFeedback.set(date, { good: 0, bad: 0 });
+            }
+            
+            const dayData = dayFeedback.get(date);
+            if (f.type === 'good') {
+                dayData.good++;
+            } else if (f.type === 'bad') {
+                dayData.bad++;
+            }
+        });
+    });
+    
+    for (let i = 13; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(today.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+        const displayDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        labels.push(displayDate);
+        
+        // Count habits completed
+        const habitsCompleted = habits.filter(h => h.completedDates?.includes(dateStr)).length;
+        habitData.push(habitsCompleted);
+        
+        // ===== THIS IS THE SECTION YOU NEED TO UPDATE =====
+        // Get mood data for the day from our aggregated map
+        const dayData = dayFeedback.get(dateStr) || { good: 0, bad: 0 };
+        
+        // Calculate mood score based on day classification (0-100)
+        let dayMood = 50; // Default neutral
+        
+        if (dayData.good > dayData.bad) {
+            dayMood = 80; // Positive day
+        } else if (dayData.bad > dayData.good) {
+            dayMood = 20; // Negative day
+        } else {
+            dayMood = 50; // Neutral day (equal good and bad, or no feedback)
+        }
+        // ===== END OF SECTION TO UPDATE =====
+        
+        moodData.push(dayMood);
+    }
+
+    // Mood vs Habits Chart
+    const moodHabitCtx = document.getElementById('moodHabitChart').getContext('2d');
+    if (moodHabitChart) moodHabitChart.destroy();
+    
+    moodHabitChart = new Chart(moodHabitCtx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Habits Completed',
+                    data: habitData,
+                    borderColor: '#6366f1',
+                    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                    tension: 0.4,
+                    yAxisID: 'y',
+                    fill: true
+                },
+                {
+                    label: 'Mood Score',
+                    data: moodData,
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    tension: 0.4,
+                    yAxisID: 'y1',
+                    fill: true
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    beginAtZero: true,
+                    grid: { color: gridColor },
+                    ticks: { color: textColor }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    min: 0,
+                    max: 100,
+                    grid: { drawOnChartArea: false },
+                    ticks: { 
+                        color: textColor,
+                        callback: function(value) {
+                            return value + '%';
+                        }
+                    }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { color: textColor }
+                }
+            },
+            plugins: {
+                legend: {
+                    labels: { color: textColor }
+                }
+            }
+        }
+    });
+
+    // Mood Distribution Pie Chart
+    let good = 0;
+    let bad = 0;
+    
+    dayFeedback.forEach(dayData => {
+        good += dayData.good;
+        bad += dayData.bad;
+    });
+
+    const moodPieCtx = document.getElementById('moodPieChart').getContext('2d');
+    if (moodPieChart) moodPieChart.destroy();
+    
+    moodPieChart = new Chart(moodPieCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Positive Mood', 'Negative Mood'],
+            datasets: [{
+                data: [good, bad],
+                backgroundColor: ['#10b981', '#ef4444'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: { color: textColor }
+                }
+            },
+            cutout: '60%'
+        }
+    });
+}
+        // Render freeze history
+        function renderFreezeHistory() {
+            const container = document.getElementById('freezeHistory');
+            
+            if (streakData.freezeHistory.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 dark:text-gray-400 text-center py-4">No streak freeze activity yet. Complete 3 days in a row to earn your first freeze!</p>';
+                return;
+            }
+            
+            const recentHistory = streakData.freezeHistory.slice(-5).reverse();
+            
+            container.innerHTML = recentHistory.map(event => {
+                const date = new Date(event.date).toLocaleDateString();
+                if (event.type === 'earned') {
+                    return `
+                        <div class="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                            <div class="flex items-center space-x-3">
+                                <span class="text-2xl">🏆</span>
+                                <div>
+                                    <p class="font-medium text-gray-900 dark:text-white">Earned Streak Freeze</p>
+                                    <p class="text-sm text-gray-600 dark:text-gray-400">For ${event.streakLength || 3}-day streak</p>
+                                </div>
+                            </div>
+                            <span class="text-sm text-gray-500 dark:text-gray-400">${date}</span>
+                        </div>
+                    `;
+                } else {
+                    return `
+                        <div class="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                            <div class="flex items-center space-x-3">
+                                <span class="text-2xl">❄️</span>
+                                <div>
+                                    <p class="font-medium text-gray-900 dark:text-white">Applied Streak Freeze</p>
+                                    <p class="text-sm text-gray-600 dark:text-gray-400">Protected ${new Date(event.appliedTo).toLocaleDateString()}</p>
+                                </div>
+                            </div>
+                            <span class="text-sm text-gray-500 dark:text-gray-400">${date}</span>
+                        </div>
+                    `;
+                }
+            }).join('');
+        }
+
+        // Render mood table
+        // Render mood table - UPDATED
+function renderMoodTable() {
+    const tbody = document.getElementById('moodTableBody');
+    
+    // Get last 14 days
+    const rows = [];
+    const today = new Date();
+    
+    // First, aggregate all feedback by day
+    const feedback = JSON.parse(localStorage.getItem('habitFeedback') || '{}');
+    const dayFeedback = new Map(); // date -> { good: count, bad: count }
+    
+    Object.values(feedback).forEach(habitFeedbacks => {
+        habitFeedbacks.forEach(f => {
+            const date = f.date.split('T')[0];
+            
+            if (!dayFeedback.has(date)) {
+                dayFeedback.set(date, { good: 0, bad: 0 });
+            }
+            
+            const dayData = dayFeedback.get(date);
+            if (f.type === 'good') {
+                dayData.good++;
+            } else if (f.type === 'bad') {
+                dayData.bad++;
+            }
+        });
+    });
+    
+    for (let i = 13; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(today.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+        const displayDate = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        
+        // Count habits completed
+        const habitsCompleted = habits.filter(h => h.completedDates?.includes(dateStr)).length;
+        
+        // Get mood for the day from our aggregated map
+        const dayData = dayFeedback.get(dateStr) || { good: 0, bad: 0 };
+        
+        let mood = 'neutral';
+        let moodDisplay = '';
+        
+        if (dayData.good > dayData.bad) {
+            mood = 'good';
+            moodDisplay = '<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">😊 Positive</span>';
+        } else if (dayData.bad > dayData.good) {
+            mood = 'bad';
+            moodDisplay = '<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">😔 Negative</span>';
+        } else {
+            moodDisplay = '<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">😐 Neutral</span>';
+        }
+        
+        const isFrozen = streakData.streakFreezeDays.includes(dateStr);
+        
+        const freezeDisplay = isFrozen ? 
+            '<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"><i class="fas fa-snowflake mr-1"></i>Freeze Applied</span>' : 
+            '<span class="text-gray-400 dark:text-gray-600">—</span>';
+        
+        rows.push(`
+            <tr>
+                <td class="px-4 py-3 text-sm text-gray-900 dark:text-white">${displayDate}</td>
+                <td class="px-4 py-3 text-sm text-gray-900 dark:text-white">${habitsCompleted}</td>
+                <td class="px-4 py-3 text-sm">${moodDisplay}</td>
+                <td class="px-4 py-3 text-sm">${freezeDisplay}</td>
+            </tr>
+        `);
+    }
+    
+    tbody.innerHTML = rows.join('');
+}
+
+        // Update charts on theme change
+        function updateCharts() {
+            if (habits.length > 0) {
+                initCharts();
+            }
+        }
+
+        // Add logout button
+        function addLogoutButton() {
+            const nav = document.querySelector('.flex.items-center.space-x-2.md\\:space-x-4');
+            if (!nav) return;
+            
+            if (document.getElementById('logout-btn')) return;
+            
+            const logoutBtn = document.createElement('button');
+            logoutBtn.id = 'logout-btn';
+            logoutBtn.onclick = logout;
+            logoutBtn.className = 'px-3 py-2 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition-colors';
+            logoutBtn.title = 'Logout';
+            logoutBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i>';
+            nav.appendChild(logoutBtn);
+        }
+
+        // Logout function
+        async function logout() {
+            try {
+                await fetch('/api/auth/logout', { method: 'POST' });
+                localStorage.removeItem('user');
+                window.location.href = '/';
+            } catch (error) {
+                console.error('Error logging out:', error);
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            addLogoutButton();
+        });
+    </script>
+</body>
+</html>

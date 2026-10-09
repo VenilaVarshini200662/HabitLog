@@ -1,0 +1,1053 @@
+<!-- public/calendar.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendar - HabitLog</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Floating AI Chat Widget -->
+    <script src="/js/chat-widget.js"></script>
+    <!-- Page Transitions -->
+    <script src="/js/page-transitions.js"></script>
+    <script src="/js/translations.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="/css/style.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: { 50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81' },
+                        accent: { 50: '#f0fdfa', 100: '#ccfbf1', 200: '#99f6e4', 300: '#5eead4', 400: '#2dd4bf', 500: '#14b8a6', 600: '#0d9488', 700: '#0f766e', 800: '#115e59', 900: '#134e4a' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .calendar-cell {
+            aspect-ratio: 1;
+            transition: all 0.2s ease;
+        }
+        .calendar-cell:hover {
+            transform: scale(1.05);
+            z-index: 10;
+        }
+        
+        /* Navigation link styles */
+        .nav-link {
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 2px;
+            background: linear-gradient(to right, #6366f1, #14b8a6);
+            transition: width 0.3s ease;
+        }
+        
+        .nav-link:hover::after {
+            width: 80%;
+        }
+        
+        .nav-link.active {
+            color: #4f46e5;
+        }
+        
+        .dark .nav-link.active {
+            color: #818cf8;
+        }
+        
+        .nav-link.active::after {
+            width: 80%;
+        }
+        
+        /* Horizontal GitHub-style Heatmap styles */
+        .heatmap-wrapper {
+            background-color: white;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            overflow-x: auto;
+        }
+        
+        .dark .heatmap-wrapper {
+            background-color: #1f2937;
+        }
+        
+        .heatmap-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        
+        .heatmap-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #111827;
+        }
+        
+        .dark .heatmap-title {
+            color: #f9fafb;
+        }
+        
+        .heatmap-legend {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            color: #6b7280;
+        }
+        
+        .heatmap-legend-colors {
+            display: flex;
+            gap: 2px;
+        }
+        
+        .heatmap-legend-color {
+            width: 1rem;
+            height: 1rem;
+            border-radius: 2px;
+        }
+        
+        /* Horizontal heatmap layout */
+        .heatmap-horizontal {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: min-content;
+        }
+        
+        .heatmap-months-row {
+            display: flex;
+            margin-left: 30px; /* Align with day cells */
+            margin-bottom: 4px;
+        }
+        
+        .heatmap-month-label {
+            font-size: 0.7rem;
+            color: #6b7280;
+            text-align: left;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .dark .heatmap-month-label {
+            color: #9ca3af;
+        }
+        
+        .heatmap-days-grid {
+            display: flex;
+        }
+        
+        .heatmap-weekday-column {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            margin-right: 4px;
+            font-size: 0.7rem;
+            color: #6b7280;
+            min-width: 25px;
+        }
+        
+        .dark .heatmap-weekday-column {
+            color: #9ca3af;
+        }
+        
+        .heatmap-weekday {
+            height: 1rem;
+            display: flex;
+            align-items: center;
+        }
+        
+        .heatmap-weeks-container {
+            display: flex;
+            gap: 2px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+        
+        .heatmap-week-column {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        
+        .heatmap-day {
+            width: 1rem;
+            height: 1rem;
+            border-radius: 2px;
+            transition: all 0.15s ease;
+            cursor: pointer;
+        }
+        
+        .heatmap-day:hover {
+            transform: scale(1.2);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            z-index: 10;
+        }
+        
+        /* Color levels - Light to dark green (GitHub style) */
+        .heatmap-day.level-0 { background-color: #ebedf0; }
+        .heatmap-day.level-1 { background-color: #9be9a8; }
+        .heatmap-day.level-2 { background-color: #40c463; }
+        .heatmap-day.level-3 { background-color: #30a14e; }
+        .heatmap-day.level-4 { background-color: #216e39; }
+        
+        .dark .heatmap-day.level-0 { background-color: #2d333b; }
+        .dark .heatmap-day.level-1 { background-color: #0e4429; }
+        .dark .heatmap-day.level-2 { background-color: #006d32; }
+        .dark .heatmap-day.level-3 { background-color: #26a641; }
+        .dark .heatmap-day.level-4 { background-color: #39d353; }
+        
+        .heatmap-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 1rem;
+            font-size: 0.75rem;
+            color: #6b7280;
+        }
+        
+        .dark .heatmap-footer {
+            color: #9ca3af;
+        }
+        
+        .heatmap-year {
+            font-weight: 600;
+            color: #4f46e5;
+        }
+        
+        .error-toast {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+    <!-- Error Toast -->
+    <div id="errorToast" class="fixed top-4 right-4 z-50 hidden">
+        <div class="bg-red-500 text-white px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3 error-toast">
+            <i class="fas fa-exclamation-circle text-xl"></i>
+            <span id="errorMessage">Error occurred</span>
+            <button onclick="hideErrorToast()" class="ml-4 hover:text-red-100">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Success Toast -->
+    <div id="successToast" class="fixed top-4 right-4 z-50 hidden">
+        <div class="bg-green-500 text-white px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3 error-toast">
+            <i class="fas fa-check-circle text-xl"></i>
+            <span id="successMessage">Success!</span>
+            <button onclick="hideSuccessToast()" class="ml-4 hover:text-green-100">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 flex flex-col items-center">
+            <div class="w-16 h-16 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin mb-4"></div>
+            <p class="text-gray-700 dark:text-gray-300">Loading...</p>
+        </div>
+    </div>
+
+   <!-- public/index.html - Updated Responsive Navigation -->
+<nav class="fixed w-full z-40 glass-effect transition-all duration-300">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center h-14 sm:h-16">
+            <!-- Logo -->
+            <div class="flex items-center space-x-2">
+                <img src="habitlog.png" alt="HabitLog" class="h-8 sm:h-10 md:h-12 w-auto">
+                <span class="text-lg sm:text-xl md:text-2xl font-bold bg-gradient-to-r from-primary-600 to-accent-500 bg-clip-text text-transparent" data-i18n="appName">
+                    HabitLog
+                </span>
+            </div>
+
+            <!-- Desktop Navigation Links (hidden on mobile) -->
+            <div class="hidden md:flex items-center space-x-4">
+                <a href="/dashboard" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Dashboard</a>
+                <a href="/calendar" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Calendar</a>
+                <a href="/stats" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                    <i class="fas fa-chart-pie mr-1"></i> Stats
+                </a>
+                <a href="/progress" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Progress</a>
+                <a href="/mood-tracker" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                    <i class="fas fa-smile mr-1"></i> Mood
+                </a>
+                <a href="/settings" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Settings</a>
+            </div>
+
+            <!-- Right side buttons -->
+            <div class="flex items-center space-x-2 sm:space-x-4">
+                <!-- Theme Toggle -->
+                <button id="themeToggle" class="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-all duration-300 transform hover:scale-110">
+                    <i class="fas fa-moon dark:hidden text-gray-700 text-sm sm:text-base"></i>
+                    <i class="fas fa-sun hidden dark:block text-yellow-400 text-sm sm:text-base"></i>
+                </button>
+
+                <!-- Logout Button (visible on desktop) -->
+                <button id="logoutBtn" class="hidden sm:block px-3 sm:px-4 py-1.5 sm:py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-all duration-300 transform hover:scale-105 text-xs sm:text-sm">
+                    <i class="fas fa-sign-out-alt mr-1"></i> Logout
+                </button>
+
+                <!-- Mobile Menu Button (only visible on mobile) -->
+                <button id="mobileMenuBtn" class="md:hidden p-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                    <i class="fas fa-bars text-lg sm:text-xl"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Menu Panel (hidden by default) -->
+    <div id="mobileMenu" class="md:hidden bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 shadow-lg transform transition-all duration-300 ease-in-out overflow-hidden" style="max-height: 0; opacity: 0;">
+        <div class="px-4 py-3 space-y-2">
+            <a href="/dashboard" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-home w-6 mr-3"></i> Dashboard
+            </a>
+            <a href="/calendar" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-calendar w-6 mr-3"></i> Calendar
+            </a>
+            <a href="/stats" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-chart-pie w-6 mr-3"></i> Statistics
+            </a>
+            <a href="/progress" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-chart-line w-6 mr-3"></i> Progress
+            </a>
+            <a href="/mood-tracker" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-smile w-6 mr-3"></i> Mood Tracker
+            </a>
+            <a href="/settings" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-cog w-6 mr-3"></i> Settings
+            </a>
+            
+            <!-- Divider -->
+            <div class="border-t border-gray-200 dark:border-gray-700 my-2"></div>
+            
+            <!-- Logout button in mobile menu -->
+            <button id="mobileLogoutBtn" class="w-full px-4 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm flex items-center justify-center">
+                <i class="fas fa-sign-out-alt mr-2"></i> Logout
+            </button>
+        </div>
+    </div>
+</nav>
+
+
+    <!-- Main Content -->
+    <main class="pt-20 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        <!-- Page Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">Calendar & Heatmap</h1>
+            <p class="text-gray-600 dark:text-gray-400">Track your daily progress and visualize your consistency</p>
+        </div>
+
+        <!-- Summary Stats -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-500 dark:text-gray-400 text-sm">Current Streak</p>
+                        <p class="text-3xl font-bold text-gray-900 dark:text-white" id="streakCount">0</p>
+                    </div>
+                    <div class="text-4xl text-accent-500">🔥</div>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-500 dark:text-gray-400 text-sm">Total Completions</p>
+                        <p class="text-3xl font-bold text-gray-900 dark:text-white" id="totalCompletions">0</p>
+                    </div>
+                    <div class="text-4xl text-green-500">✅</div>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-500 dark:text-gray-400 text-sm">Active Habits</p>
+                        <p class="text-3xl font-bold text-gray-900 dark:text-white" id="activeHabits">0</p>
+                    </div>
+                    <div class="text-4xl text-primary-500">📋</div>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-500 dark:text-gray-400 text-sm">Best Day</p>
+                        <p class="text-3xl font-bold text-gray-900 dark:text-white" id="bestDay">0</p>
+                    </div>
+                    <div class="text-4xl text-yellow-500">🏆</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GitHub-style Horizontal Heatmap Section -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md mb-8">
+            <div class="heatmap-header">
+                <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Activity Heatmap</h2>
+                <div class="heatmap-legend">
+    <span class="text-sm text-gray-600 dark:text-gray-400">Less</span>
+    <div class="flex space-x-1 mx-2">
+        <div class="w-5 h-5 heatmap-day level-0 rounded-sm"></div>
+        <div class="w-5 h-5 heatmap-day level-1 rounded-sm"></div>
+        <div class="w-5 h-5 heatmap-day level-2 rounded-sm"></div>
+        <div class="w-5 h-5 heatmap-day level-3 rounded-sm"></div>
+        <div class="w-5 h-5 heatmap-day level-4 rounded-sm"></div>
+    </div>
+    <span class="text-sm text-gray-600 dark:text-gray-400">More</span>
+</div>
+            </div>
+            
+            <!-- Horizontal Heatmap Container -->
+            <div id="heatmapContainer" class="overflow-x-auto">
+                <!-- Heatmap will be dynamically generated here -->
+            </div>
+            
+            <!-- Heatmap Footer -->
+            <div class="heatmap-footer">
+                <span>Your habit activity over the last year</span>
+                <span class="heatmap-year" id="heatmapYear">2024-2025</span>
+            </div>
+        </div>
+
+        <!-- Calendar Section -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md mb-8">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-6">Monthly Calendar</h2>
+            
+            <!-- Month Navigation -->
+            <div class="flex items-center justify-between mb-6">
+                <button id="prevMonth" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                    <i class="fas fa-chevron-left mr-2"></i>Previous
+                </button>
+                <h2 id="currentMonth" class="text-2xl font-semibold text-gray-900 dark:text-white"></h2>
+                <button id="nextMonth" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                    Next<i class="fas fa-chevron-right ml-2"></i>
+                </button>
+            </div>
+
+            <!-- Week Days -->
+            <div class="grid grid-cols-7 gap-2 mb-4">
+                <div class="text-center font-semibold text-gray-600 dark:text-gray-400">Sun</div>
+                <div class="text-center font-semibold text-gray-600 dark:text-gray-400">Mon</div>
+                <div class="text-center font-semibold text-gray-600 dark:text-gray-400">Tue</div>
+                <div class="text-center font-semibold text-gray-600 dark:text-gray-400">Wed</div>
+                <div class="text-center font-semibold text-gray-600 dark:text-gray-400">Thu</div>
+                <div class="text-center font-semibold text-gray-600 dark:text-gray-400">Fri</div>
+                <div class="text-center font-semibold text-gray-600 dark:text-gray-400">Sat</div>
+            </div>
+
+            <!-- Calendar Grid -->
+            <div id="calendarGrid" class="grid grid-cols-7 gap-2">
+                <!-- Dynamically populated -->
+            </div>
+        </div>
+
+        <!-- Legend -->
+        <div class="mt-6 flex flex-wrap gap-4 justify-center">
+            <div class="flex items-center">
+                <div class="w-4 h-4 bg-gray-200 dark:bg-gray-700 rounded mr-2"></div>
+                <span class="text-gray-600 dark:text-gray-400">No habits</span>
+            </div>
+            <div class="flex items-center">
+                <div class="w-4 h-4 bg-green-200 dark:bg-green-900 rounded mr-2"></div>
+                <span class="text-gray-600 dark:text-gray-400">1-2 habits</span>
+            </div>
+            <div class="flex items-center">
+                <div class="w-4 h-4 bg-green-400 dark:bg-green-600 rounded mr-2"></div>
+                <span class="text-gray-600 dark:text-gray-400">3-4 habits</span>
+            </div>
+            <div class="flex items-center">
+                <div class="w-4 h-4 bg-green-600 rounded mr-2"></div>
+                <span class="text-gray-600 dark:text-gray-400">5+ habits</span>
+            </div>
+        </div>
+    </main>
+
+    <script>
+    // Mobile Menu Toggle
+    document.addEventListener('DOMContentLoaded', function() {
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const mobileMenu = document.getElementById('mobileMenu');
+        
+        if (mobileMenuBtn && mobileMenu) {
+            mobileMenuBtn.addEventListener('click', function() {
+                // Toggle menu
+                if (mobileMenu.style.maxHeight === '0px' || mobileMenu.style.maxHeight === '') {
+                    mobileMenu.style.maxHeight = '500px';
+                    mobileMenu.style.opacity = '1';
+                    mobileMenuBtn.innerHTML = '<i class="fas fa-times text-lg sm:text-xl"></i>';
+                } else {
+                    mobileMenu.style.maxHeight = '0px';
+                    mobileMenu.style.opacity = '0';
+                    mobileMenuBtn.innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                }
+            });
+
+            // Close menu when clicking outside
+            document.addEventListener('click', function(event) {
+                if (!mobileMenu.contains(event.target) && !mobileMenuBtn.contains(event.target)) {
+                    mobileMenu.style.maxHeight = '0px';
+                    mobileMenu.style.opacity = '0';
+                    mobileMenuBtn.innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                }
+            });
+
+            // Close menu on window resize (if switching to desktop)
+            window.addEventListener('resize', function() {
+                if (window.innerWidth >= 768) {
+                    mobileMenu.style.maxHeight = '0px';
+                    mobileMenu.style.opacity = '0';
+                    if (mobileMenuBtn) {
+                        mobileMenuBtn.innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                    }
+                }
+            });
+        }
+
+        // Logout functionality
+        const logoutBtn = document.getElementById('logoutBtn');
+        const mobileLogoutBtn = document.getElementById('mobileLogoutBtn');
+        
+        async function handleLogout() {
+            try {
+                // Close mobile menu if open
+                if (mobileMenu) {
+                    mobileMenu.style.maxHeight = '0px';
+                    mobileMenu.style.opacity = '0';
+                    if (mobileMenuBtn) {
+                        mobileMenuBtn.innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                    }
+                }
+                
+                // Call logout API
+                const response = await fetch('/api/auth/logout', { 
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    // Clear user data from localStorage
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('language');
+                    
+                    // Redirect to landing page
+                    window.location.href = '/';
+                } else {
+                    console.error('Logout failed');
+                    // Still redirect even if API fails
+                    window.location.href = '/';
+                }
+            } catch (error) {
+                console.error('Error logging out:', error);
+                // Redirect anyway
+                window.location.href = '/';
+            }
+        }
+
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', handleLogout);
+        }
+
+        if (mobileLogoutBtn) {
+            mobileLogoutBtn.addEventListener('click', handleLogout);
+        }
+    });
+        // Theme Toggle
+        const themeToggle = document.getElementById('themeToggle');
+        const html = document.documentElement;
+        
+        // Load saved theme
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark') html.classList.add('dark');
+        else if (savedTheme === 'light') html.classList.remove('dark');
+
+        themeToggle.addEventListener('click', () => {
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+        });
+
+        // Toast functions
+        function showError(message) {
+            const toast = document.getElementById('errorToast');
+            document.getElementById('errorMessage').textContent = message;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 5000);
+        }
+
+        function hideErrorToast() {
+            document.getElementById('errorToast').classList.add('hidden');
+        }
+
+        function showSuccess(message) {
+            const toast = document.getElementById('successToast');
+            document.getElementById('successMessage').textContent = message;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+
+        function hideSuccessToast() {
+            document.getElementById('successToast').classList.add('hidden');
+        }
+
+        function showLoading() {
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+            document.getElementById('loadingOverlay').classList.add('flex');
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+            document.getElementById('loadingOverlay').classList.remove('flex');
+        }
+
+        // Calendar state
+        let currentDate = new Date();
+        let habits = [];
+
+        // Load habits
+        async function loadHabits() {
+            try {
+                showLoading();
+                const response = await fetch('/api/habits');
+                if (response.ok) {
+                    habits = await response.json();
+                    updateSummaryStats();
+                    renderCalendar();
+                    renderHorizontalHeatmap();
+                }
+                hideLoading();
+            } catch (error) {
+                hideLoading();
+                console.error('Error loading habits:', error);
+                showError('Failed to load habits');
+            }
+        }
+
+        // Update summary statistics
+        function updateSummaryStats() {
+            const today = new Date().toISOString().split('T')[0];
+            
+            // Calculate streak
+            const completionDates = new Set();
+            habits.forEach(habit => {
+                if (habit.completedDates) {
+                    habit.completedDates.forEach(date => completionDates.add(date));
+                }
+            });
+            
+            const sortedDates = Array.from(completionDates).sort();
+            let streak = 0;
+            if (sortedDates.includes(today)) {
+                streak = 1;
+                let checkDate = new Date(today);
+                for (let i = 1; i <= 365; i++) {
+                    checkDate.setDate(checkDate.getDate() - 1);
+                    const dateStr = checkDate.toISOString().split('T')[0];
+                    if (sortedDates.includes(dateStr)) {
+                        streak++;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            
+            // Total completions
+            const totalCompletions = habits.reduce((sum, h) => sum + (h.completedDates?.length || 0), 0);
+            
+            // Active habits
+            const activeHabits = habits.length;
+            
+            // ===== FIXED: Best Day calculation =====
+            // Best day counts days where:
+            // 1. ALL habits were completed
+            // 2. ALL feedback (if any) is thumbs up (👍)
+            
+            // Get all unique dates where habits were completed
+            const allDates = new Set();
+            habits.forEach(habit => {
+                if (habit.completedDates) {
+                    habit.completedDates.forEach(date => allDates.add(date));
+                }
+            });
+            
+            // Get feedback data from localStorage
+            const feedback = JSON.parse(localStorage.getItem('habitFeedback') || '{}');
+            
+            // Count best days
+            let bestDayCount = 0;
+            let bestDays = [];
+            
+            allDates.forEach(date => {
+                // Check if ALL habits were completed on this date
+                const allHabitsCompleted = habits.every(habit => 
+                    habit.completedDates && habit.completedDates.includes(date)
+                );
+                
+                if (allHabitsCompleted) {
+                    // Check if all feedback for this date is thumbs up (👍)
+                    let allFeedbackThumbsUp = true;
+                    let hasFeedback = false;
+                    
+                    Object.values(feedback).forEach(habitFeedbacks => {
+                        habitFeedbacks.forEach(f => {
+                            if (f.date.split('T')[0] === date) {
+                                hasFeedback = true;
+                                if (f.type !== 'good') {
+                                    allFeedbackThumbsUp = false;
+                                }
+                            }
+                        });
+                    });
+                    
+                    // Count as best day if:
+                    // 1. ALL habits were completed, AND
+                    // 2. Either there's no feedback OR all feedback is thumbs up
+                    if (!hasFeedback || allFeedbackThumbsUp) {
+                        bestDayCount++;
+                        bestDays.push(date);
+                        console.log(`✅ Best day: ${date} - All habits + all 👍`);
+                    }
+                }
+            });
+            
+            // Store best days for calendar highlighting
+            localStorage.setItem('bestDays', JSON.stringify(bestDays));
+            // ===== END OF BEST DAY FIX =====
+            
+            // Update DOM
+            document.getElementById('streakCount').textContent = streak;
+            document.getElementById('totalCompletions').textContent = totalCompletions;
+            document.getElementById('activeHabits').textContent = activeHabits;
+            document.getElementById('bestDay').textContent = bestDayCount;
+            
+            console.log(`🎯 Best days count: ${bestDayCount}`);
+        }
+
+        // FIXED: Horizontal GitHub-style heatmap render function with correct month alignment
+        function renderHorizontalHeatmap() {
+            const container = document.getElementById('heatmapContainer');
+            if (!container) return;
+            
+            container.innerHTML = '';
+            
+            // Get date range (last 365 days)
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - 364); // 365 days including today
+            
+            // Update heatmap year display
+            const startYear = startDate.getFullYear();
+            const endYear = endDate.getFullYear();
+            document.getElementById('heatmapYear').textContent = 
+                startYear === endYear ? `${startYear}` : `${startYear}-${endYear}`;
+            
+            // Create a map of completion counts by date
+            const completionMap = new Map();
+            habits.forEach(habit => {
+                if (habit.completedDates) {
+                    habit.completedDates.forEach(date => {
+                        completionMap.set(date, (completionMap.get(date) || 0) + 1);
+                    });
+                }
+            });
+            
+            // Calculate the maximum completion count for color scaling
+            const maxCompletions = Math.max(...Array.from(completionMap.values()), 0);
+            
+            // Generate weeks data
+            const weeks = [];
+            let currentDate = new Date(startDate);
+            
+            // Adjust to start from Sunday
+            while (currentDate.getDay() !== 0) {
+                currentDate.setDate(currentDate.getDate() - 1);
+            }
+            
+            // Store the actual start date after adjustment
+            const adjustedStartDate = new Date(currentDate);
+            
+            // Generate 53 weeks (to ensure full coverage)
+            for (let week = 0; week < 53; week++) {
+                const weekDays = [];
+                for (let day = 0; day < 7; day++) {
+                    const dateStr = currentDate.toISOString().split('T')[0];
+                    const count = completionMap.get(dateStr) || 0;
+                    
+                    // Determine level (0-4) based on count
+                    let level = 0;
+                    if (count > 0) {
+                        if (maxCompletions <= 4) {
+                            level = Math.min(count, 4);
+                        } else {
+                            const percentage = count / maxCompletions;
+                            if (percentage < 0.25) level = 1;
+                            else if (percentage < 0.5) level = 2;
+                            else if (percentage < 0.75) level = 3;
+                            else level = 4;
+                        }
+                    }
+                    
+                    weekDays.push({
+                        date: dateStr,
+                        count: count,
+                        level: level
+                    });
+                    currentDate.setDate(currentDate.getDate() + 1);
+                }
+                weeks.push(weekDays);
+            }
+            
+            // FIXED: Generate month labels with correct alignment
+            const monthLabels = [];
+            let labelDate = new Date(adjustedStartDate);
+            
+            // Create an array of months from start date to end date
+            while (labelDate <= endDate) {
+                const monthName = labelDate.toLocaleString('default', { month: 'short' });
+                const weekIndex = Math.floor((labelDate - adjustedStartDate) / (7 * 24 * 60 * 60 * 1000));
+                
+                // Calculate how many weeks this month spans
+                const nextMonth = new Date(labelDate);
+                nextMonth.setMonth(labelDate.getMonth() + 1);
+                nextMonth.setDate(1); // First day of next month
+                
+                // Calculate week index for the first day of next month
+                const nextMonthWeekIndex = Math.floor((nextMonth - adjustedStartDate) / (7 * 24 * 60 * 60 * 1000));
+                
+                // Ensure week indices are within bounds
+                if (weekIndex >= 0 && weekIndex < weeks.length) {
+                    const span = Math.min(nextMonthWeekIndex - weekIndex, weeks.length - weekIndex);
+                    if (span > 0) {
+                        monthLabels.push({
+                            name: monthName,
+                            week: weekIndex,
+                            span: span
+                        });
+                    }
+                }
+                
+                // Move to next month
+                labelDate.setMonth(labelDate.getMonth() + 1);
+                labelDate.setDate(1); // Reset to first day of month for accurate week calculation
+            }
+            
+            // Create horizontal heatmap structure
+            const heatmapDiv = document.createElement('div');
+            heatmapDiv.className = 'heatmap-horizontal';
+            
+            // Month labels row
+            const monthsRow = document.createElement('div');
+            monthsRow.className = 'heatmap-months-row';
+            
+            monthLabels.forEach(month => {
+                const monthLabel = document.createElement('div');
+                monthLabel.className = 'heatmap-month-label';
+                monthLabel.style.width = `${month.span * 1.15}rem`; // Each week is about 1.15rem wide (including gap)
+                monthLabel.textContent = month.name;
+                monthsRow.appendChild(monthLabel);
+            });
+            heatmapDiv.appendChild(monthsRow);
+            
+            // Days grid row
+            const daysGridRow = document.createElement('div');
+            daysGridRow.className = 'heatmap-days-grid';
+            
+            // Weekday labels column
+            const weekdayColumn = document.createElement('div');
+            weekdayColumn.className = 'heatmap-weekday-column';
+            const weekdays = ['Mon', 'Wed', 'Fri'];
+            weekdays.forEach(day => {
+                const weekday = document.createElement('div');
+                weekday.className = 'heatmap-weekday';
+                weekday.textContent = day;
+                weekdayColumn.appendChild(weekday);
+            });
+            daysGridRow.appendChild(weekdayColumn);
+            
+            // Weeks container
+            const weeksContainer = document.createElement('div');
+            weeksContainer.className = 'heatmap-weeks-container';
+            
+            // Create week columns
+            weeks.forEach((week, weekIndex) => {
+                const weekColumn = document.createElement('div');
+                weekColumn.className = 'heatmap-week-column';
+                
+                week.forEach(day => {
+                    const dayDiv = document.createElement('div');
+                    dayDiv.className = `heatmap-day level-${day.level}`;
+                    dayDiv.title = `${day.date}: ${day.count} habit${day.count !== 1 ? 's' : ''} completed`;
+                    dayDiv.addEventListener('click', () => showDayDetails(day.date, day.count));
+                    weekColumn.appendChild(dayDiv);
+                });
+                
+                weeksContainer.appendChild(weekColumn);
+            });
+            
+            daysGridRow.appendChild(weeksContainer);
+            heatmapDiv.appendChild(daysGridRow);
+            
+            container.appendChild(heatmapDiv);
+        }
+
+        // Render calendar
+        function renderCalendar() {
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+            
+            document.getElementById('currentMonth').textContent = 
+                new Date(year, month).toLocaleString('default', { month: 'long', year: 'numeric' });
+
+            const firstDay = new Date(year, month, 1).getDay();
+            const lastDate = new Date(year, month + 1, 0).getDate();
+
+            const grid = document.getElementById('calendarGrid');
+            grid.innerHTML = '';
+
+            // Get best days from localStorage
+            const bestDays = JSON.parse(localStorage.getItem('bestDays') || '[]');
+
+            // Empty cells for days before month starts
+            for (let i = 0; i < firstDay; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'calendar-cell bg-gray-100 dark:bg-gray-800 rounded-lg opacity-30';
+                grid.appendChild(cell);
+            }
+
+            // Calendar cells
+            for (let date = 1; date <= lastDate; date++) {
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`;
+                const completedCount = habits.filter(h => h.completedDates?.includes(dateStr)).length;
+                
+                let bgColor = 'bg-gray-200 dark:bg-gray-700';
+                if (completedCount > 0) {
+                    if (completedCount <= 2) bgColor = 'bg-green-200 dark:bg-green-900';
+                    else if (completedCount <= 4) bgColor = 'bg-green-400 dark:bg-green-600';
+                    else bgColor = 'bg-green-600';
+                }
+
+                const isBestDay = bestDays.includes(dateStr);
+                
+                const cell = document.createElement('div');
+                cell.className = `calendar-cell ${bgColor} rounded-lg p-2 flex flex-col items-center justify-center cursor-pointer hover:shadow-lg transition-all ${isBestDay ? 'ring-2 ring-yellow-400 ring-offset-2' : ''}`;
+                
+                cell.innerHTML = `
+                    <span class="text-lg font-semibold ${completedCount > 4 ? 'text-white' : 'text-gray-900 dark:text-white'}">${date}</span>
+                    <span class="text-xs ${completedCount > 4 ? 'text-white' : 'text-gray-600 dark:text-gray-400'}">${completedCount} habits</span>
+                    ${isBestDay ? '<span class="text-xs text-yellow-500 mt-1">🏆</span>' : ''}
+                `;
+                
+                cell.addEventListener('click', () => showDayDetails(dateStr, completedCount));
+                grid.appendChild(cell);
+            }
+        }
+
+        // Show day details
+        function showDayDetails(date, completedCount) {
+            const completedHabits = habits.filter(h => h.completedDates?.includes(date));
+            
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            modal.innerHTML = `
+                <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-md w-full mx-4">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-2xl font-bold dark:text-white">${date}</h2>
+                        <button onclick="this.closest('.fixed').remove()" class="text-gray-500 hover:text-gray-700">
+                            <i class="fas fa-times text-xl"></i>
+                        </button>
+                    </div>
+                    <p class="text-gray-600 dark:text-gray-400 mb-4">Completed ${completedCount} out of ${habits.length} habits</p>
+                    <div class="space-y-2 max-h-60 overflow-y-auto">
+                        ${completedHabits.map(h => `
+                            <div class="flex items-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                <span class="text-2xl mr-3">${h.icon || '📝'}</span>
+                                <span class="dark:text-white">${h.name}</span>
+                                <span class="ml-auto text-green-500">✓</span>
+                            </div>
+                        `).join('')}
+                        ${completedHabits.length === 0 ? '<p class="text-center text-gray-500">No habits completed on this day</p>' : ''}
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        }
+
+        // Navigation
+        document.getElementById('prevMonth').addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() - 1);
+            renderCalendar();
+        });
+
+        document.getElementById('nextMonth').addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            renderCalendar();
+        });
+
+        // Add logout button
+        function addLogoutButton() {
+            const nav = document.querySelector('.flex.items-center.space-x-2.md\\:space-x-4');
+            if (!nav) return;
+            
+            // Check if logout button already exists
+            if (document.getElementById('logout-btn')) return;
+            
+            const logoutBtn = document.createElement('button');
+            logoutBtn.id = 'logout-btn';
+            logoutBtn.onclick = logout;
+            logoutBtn.className = 'px-3 py-2 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition-colors';
+            logoutBtn.title = 'Logout';
+            logoutBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i>';
+            nav.appendChild(logoutBtn);
+        }
+
+        // Logout function
+        async function logout() {
+            try {
+                await fetch('/api/auth/logout', { method: 'POST' });
+                localStorage.removeItem('user');
+                window.location.href = '/';
+            } catch (error) {
+                console.error('Error logging out:', error);
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadHabits();
+            addLogoutButton();
+        });
+    </script>
+</body>
+</html>

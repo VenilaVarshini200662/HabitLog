@@ -1,0 +1,526 @@
+<!-- public/stats.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Statistics - HabitLog</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/js/translations.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Floating AI Chat Widget -->
+    <script src="/js/chat-widget.js"></script>
+    <!-- Page Transitions -->
+    <script src="/js/page-transitions.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: { 50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81' },
+                        accent: { 50: '#f0fdfa', 100: '#ccfbf1', 200: '#99f6e4', 300: '#5eead4', 400: '#2dd4bf', 500: '#14b8a6', 600: '#0d9488', 700: '#0f766e', 800: '#115e59', 900: '#134e4a' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+         /* Navigation link styles */
+        .nav-link {
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 2px;
+            background: linear-gradient(to right, #6366f1, #14b8a6);
+            transition: width 0.3s ease;
+        }
+        
+        .nav-link:hover::after {
+            width: 80%;
+        }
+        
+        .nav-link.active {
+            color: #4f46e5;
+        }
+        
+        .dark .nav-link.active {
+            color: #818cf8;
+        }
+        
+        .nav-link.active::after {
+            width: 80%;
+        }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+ <!-- Navigation - FIXED VERSION for ALL pages -->
+<!-- public/index.html - Updated Responsive Navigation -->
+<nav class="fixed w-full z-40 glass-effect transition-all duration-300">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center h-14 sm:h-16">
+            <!-- Logo -->
+            <div class="flex items-center space-x-2">
+                <img src="habitlog.png" alt="HabitLog" class="h-8 sm:h-10 md:h-12 w-auto">
+                <span class="text-lg sm:text-xl md:text-2xl font-bold bg-gradient-to-r from-primary-600 to-accent-500 bg-clip-text text-transparent" data-i18n="appName">
+                    HabitLog
+                </span>
+            </div>
+
+            <!-- Desktop Navigation Links (hidden on mobile) -->
+            <div class="hidden md:flex items-center space-x-4">
+                <a href="/dashboard" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Dashboard</a>
+                <a href="/calendar" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Calendar</a>
+                <a href="/stats" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                    <i class="fas fa-chart-pie mr-1"></i> Stats
+                </a>
+                <a href="/progress" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Progress</a>
+                <a href="/mood-tracker" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                    <i class="fas fa-smile mr-1"></i> Mood
+                </a>
+                <a href="/settings" class="nav-link px-3 py-2 text-sm lg:text-base text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Settings</a>
+            </div>
+
+            <!-- Right side buttons -->
+            <div class="flex items-center space-x-2 sm:space-x-4">
+                <!-- Theme Toggle -->
+                <button id="themeToggle" class="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-all duration-300 transform hover:scale-110">
+                    <i class="fas fa-moon dark:hidden text-gray-700 text-sm sm:text-base"></i>
+                    <i class="fas fa-sun hidden dark:block text-yellow-400 text-sm sm:text-base"></i>
+                </button>
+
+                <!-- Logout Button (visible on desktop) -->
+                <button id="logoutBtn" class="hidden sm:block px-3 sm:px-4 py-1.5 sm:py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-all duration-300 transform hover:scale-105 text-xs sm:text-sm">
+                    <i class="fas fa-sign-out-alt mr-1"></i> Logout
+                </button>
+
+                <!-- Mobile Menu Button (only visible on mobile) -->
+                <button id="mobileMenuBtn" class="md:hidden p-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                    <i class="fas fa-bars text-lg sm:text-xl"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Menu Panel (hidden by default) -->
+    <div id="mobileMenu" class="md:hidden bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 shadow-lg transform transition-all duration-300 ease-in-out overflow-hidden" style="max-height: 0; opacity: 0;">
+        <div class="px-4 py-3 space-y-2">
+            <a href="/dashboard" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-home w-6 mr-3"></i> Dashboard
+            </a>
+            <a href="/calendar" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-calendar w-6 mr-3"></i> Calendar
+            </a>
+            <a href="/stats" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-chart-pie w-6 mr-3"></i> Statistics
+            </a>
+            <a href="/progress" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-chart-line w-6 mr-3"></i> Progress
+            </a>
+            <a href="/mood-tracker" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-smile w-6 mr-3"></i> Mood Tracker
+            </a>
+            <a href="/settings" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <i class="fas fa-cog w-6 mr-3"></i> Settings
+            </a>
+            
+            <!-- Divider -->
+            <div class="border-t border-gray-200 dark:border-gray-700 my-2"></div>
+            
+            <!-- Logout button in mobile menu -->
+            <button id="mobileLogoutBtn" class="w-full px-4 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm flex items-center justify-center">
+                <i class="fas fa-sign-out-alt mr-2"></i> Logout
+            </button>
+        </div>
+    </div>
+</nav>
+
+
+    <!-- Main Content -->
+    <main class="pt-20 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">Statistics</h1>
+            <p class="text-gray-600 dark:text-gray-400">Visualize your habit completion data</p>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
+                <div class="text-center">
+                    <p class="text-gray-500 dark:text-gray-400 text-sm">Overall Completion Rate</p>
+                    <p class="text-4xl font-bold text-primary-600 dark:text-primary-400" id="completionRate">0%</p>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
+                <div class="text-center">
+                    <p class="text-gray-500 dark:text-gray-400 text-sm">Total Completions</p>
+                    <p class="text-4xl font-bold text-accent-600 dark:text-accent-400" id="totalCompletions">0</p>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
+                <div class="text-center">
+                    <p class="text-gray-500 dark:text-gray-400 text-sm">Most Consistent Habit</p>
+                    <p class="text-xl font-semibold text-gray-900 dark:text-white" id="mostConsistent">-</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Pie Chart -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
+                <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Habit Distribution</h2>
+                <div class="chart-container">
+                    <canvas id="pieChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Completion Stats -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
+                <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Completion Statistics</h2>
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <span class="text-gray-600 dark:text-gray-400">Daily Average</span>
+                            <span class="font-semibold dark:text-white" id="dailyAvg">0</span>
+                        </div>
+                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                            <div class="bg-primary-500 h-2 rounded-full" id="dailyAvgBar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <span class="text-gray-600 dark:text-gray-400">Weekly Average</span>
+                            <span class="font-semibold dark:text-white" id="weeklyAvg">0</span>
+                        </div>
+                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                            <div class="bg-accent-500 h-2 rounded-full" id="weeklyAvgBar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <span class="text-gray-600 dark:text-gray-400">Monthly Average</span>
+                            <span class="font-semibold dark:text-white" id="monthlyAvg">0</span>
+                        </div>
+                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                            <div class="bg-purple-500 h-2 rounded-full" id="monthlyAvgBar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Streak Distribution -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md lg:col-span-2">
+                <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Streak Distribution</h2>
+                <div class="chart-container">
+                    <canvas id="streakChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+    // Mobile Menu Toggle
+    document.addEventListener('DOMContentLoaded', function() {
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const mobileMenu = document.getElementById('mobileMenu');
+        
+        if (mobileMenuBtn && mobileMenu) {
+            mobileMenuBtn.addEventListener('click', function() {
+                // Toggle menu
+                if (mobileMenu.style.maxHeight === '0px' || mobileMenu.style.maxHeight === '') {
+                    mobileMenu.style.maxHeight = '500px';
+                    mobileMenu.style.opacity = '1';
+                    mobileMenuBtn.innerHTML = '<i class="fas fa-times text-lg sm:text-xl"></i>';
+                } else {
+                    mobileMenu.style.maxHeight = '0px';
+                    mobileMenu.style.opacity = '0';
+                    mobileMenuBtn.innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                }
+            });
+
+            // Close menu when clicking outside
+            document.addEventListener('click', function(event) {
+                if (!mobileMenu.contains(event.target) && !mobileMenuBtn.contains(event.target)) {
+                    mobileMenu.style.maxHeight = '0px';
+                    mobileMenu.style.opacity = '0';
+                    mobileMenuBtn.innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                }
+            });
+
+            // Close menu on window resize (if switching to desktop)
+            window.addEventListener('resize', function() {
+                if (window.innerWidth >= 768) {
+                    mobileMenu.style.maxHeight = '0px';
+                    mobileMenu.style.opacity = '0';
+                    if (mobileMenuBtn) {
+                        mobileMenuBtn.innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                    }
+                }
+            });
+        }
+
+        // Logout functionality
+        const logoutBtn = document.getElementById('logoutBtn');
+        const mobileLogoutBtn = document.getElementById('mobileLogoutBtn');
+        
+        async function handleLogout() {
+            try {
+                // Close mobile menu if open
+                if (mobileMenu) {
+                    mobileMenu.style.maxHeight = '0px';
+                    mobileMenu.style.opacity = '0';
+                    if (mobileMenuBtn) {
+                        mobileMenuBtn.innerHTML = '<i class="fas fa-bars text-lg sm:text-xl"></i>';
+                    }
+                }
+                
+                // Call logout API
+                const response = await fetch('/api/auth/logout', { 
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    // Clear user data from localStorage
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('language');
+                    
+                    // Redirect to landing page
+                    window.location.href = '/';
+                } else {
+                    console.error('Logout failed');
+                    // Still redirect even if API fails
+                    window.location.href = '/';
+                }
+            } catch (error) {
+                console.error('Error logging out:', error);
+                // Redirect anyway
+                window.location.href = '/';
+            }
+        }
+
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', handleLogout);
+        }
+
+        if (mobileLogoutBtn) {
+            mobileLogoutBtn.addEventListener('click', handleLogout);
+        }
+    });
+        // Theme Toggle
+        const themeToggle = document.getElementById('themeToggle');
+        const html = document.documentElement;
+        
+        themeToggle.addEventListener('click', () => {
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+            updateCharts(); // Redraw charts with new theme
+        });
+
+        if (localStorage.getItem('theme') === 'dark') {
+            html.classList.add('dark');
+        }
+
+        // Charts
+        let pieChart, streakChart;
+        let habits = [];
+
+        // Load habits
+        async function loadHabits() {
+            try {
+                const response = await fetch('/api/habits');
+                if (response.ok) {
+                    habits = await response.json();
+                    updateStats();
+                    initCharts();
+                }
+            } catch (error) {
+                console.error('Error loading habits:', error);
+            }
+        }
+
+        // Update statistics
+        function updateStats() {
+            const totalCompletions = habits.reduce((sum, h) => sum + (h.completedDates?.length || 0), 0);
+            const totalDays = 30; // Last 30 days
+            const completionRate = habits.length > 0 ? (totalCompletions / (habits.length * totalDays)) * 100 : 0;
+            
+            document.getElementById('completionRate').textContent = `${Math.round(completionRate)}%`;
+            document.getElementById('totalCompletions').textContent = totalCompletions;
+
+            // Most consistent habit
+            let mostConsistent = habits.reduce((best, current) => {
+                const bestRate = best.completedDates?.length || 0;
+                const currentRate = current.completedDates?.length || 0;
+                return currentRate > bestRate ? current : best;
+            }, habits[0]);
+
+            document.getElementById('mostConsistent').textContent = mostConsistent?.name || '-';
+
+            // Averages
+            const today = new Date();
+            const dailyCompletions = habits.filter(h => 
+                h.completedDates?.includes(today.toISOString().split('T')[0])
+            ).length;
+            
+            const weeklyCompletions = habits.filter(h => {
+                const weekAgo = new Date(today);
+                weekAgo.setDate(today.getDate() - 7);
+                return h.completedDates?.some(date => new Date(date) >= weekAgo);
+            }).length;
+            
+            const monthlyCompletions = habits.filter(h => {
+                const monthAgo = new Date(today);
+                monthAgo.setMonth(today.getMonth() - 1);
+                return h.completedDates?.some(date => new Date(date) >= monthAgo);
+            }).length;
+
+            document.getElementById('dailyAvg').textContent = dailyCompletions;
+            document.getElementById('weeklyAvg').textContent = Math.round(weeklyCompletions / 7);
+            document.getElementById('monthlyAvg').textContent = Math.round(monthlyCompletions / 30);
+
+            // Progress bars
+            document.getElementById('dailyAvgBar').style.width = `${(dailyCompletions / habits.length) * 100}%`;
+            document.getElementById('weeklyAvgBar').style.width = `${(weeklyCompletions / (habits.length * 7)) * 100}%`;
+            document.getElementById('monthlyAvgBar').style.width = `${(monthlyCompletions / (habits.length * 30)) * 100}%`;
+        }
+
+        // Initialize charts
+        function initCharts() {
+            const isDark = html.classList.contains('dark');
+            const textColor = isDark ? '#e5e7eb' : '#374151';
+            const gridColor = isDark ? '#374151' : '#e5e7eb';
+
+            // Destroy existing charts
+            if (pieChart) pieChart.destroy();
+            if (streakChart) streakChart.destroy();
+
+            // Pie Chart
+            const pieCtx = document.getElementById('pieChart').getContext('2d');
+            
+            const habitNames = habits.map(h => h.name);
+            const habitCompletions = habits.map(h => h.completedDates?.length || 0);
+            const colors = habits.map((_, i) => `hsl(${(i * 360) / habits.length}, 70%, 60%)`);
+
+            pieChart = new Chart(pieCtx, {
+                type: 'pie',
+                data: {
+                    labels: habitNames,
+                    datasets: [{
+                        data: habitCompletions,
+                        backgroundColor: colors,
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: textColor
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Streak Chart
+            const streakCtx = document.getElementById('streakChart').getContext('2d');
+            
+            const streakRanges = ['0-7', '8-30', '31-90', '91+'];
+            const streakData = [
+                habits.filter(h => (h.streak || 0) <= 7).length,
+                habits.filter(h => (h.streak || 0) > 7 && (h.streak || 0) <= 30).length,
+                habits.filter(h => (h.streak || 0) > 30 && (h.streak || 0) <= 90).length,
+                habits.filter(h => (h.streak || 0) > 90).length
+            ];
+
+            streakChart = new Chart(streakCtx, {
+                type: 'bar',
+                data: {
+                    labels: streakRanges,
+                    datasets: [{
+                        label: 'Number of Habits',
+                        data: streakData,
+                        backgroundColor: ['#6366f1', '#14b8a6', '#8b5cf6', '#ec4899'],
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: gridColor
+                            },
+                            ticks: {
+                                color: textColor
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                color: textColor
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update charts on theme change
+        function updateCharts() {
+            if (habits.length > 0) {
+                initCharts();
+            }
+        }
+
+        // Initial load
+        loadHabits();
+        
+        
+    </script>
+
+</body>
+</html>
