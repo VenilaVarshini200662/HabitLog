@@ -3,37 +3,23 @@ const express = require('express');
 const path = require('path');
 const bodyParser = require('body-parser');
 const session = require('express-session');
+const pgSession = require('connect-pg-simple')(session);
 const cors = require('cors');
 const dotenv = require('dotenv');
-const fs = require('fs');
 const cron = require('node-cron');
+
+const db = require('./db');
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-// Detect environment — production ONLY when explicitly set (Render will set this)
 const isProd = process.env.NODE_ENV === 'production';
 
-// Ensure data directory exists
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
-
-// Ensure users file exists
-const usersFilePath = path.join(dataDir, 'users.json');
-if (!fs.existsSync(usersFilePath)) {
-    fs.writeFileSync(usersFilePath, JSON.stringify([]));
-}
-
-// Trust proxy — needed for Render's load balancer (harmless locally)
 app.set('trust proxy', 1);
 
-// Middleware
 const corsOptions = {
-    origin: isProd
-        ? [process.env.FRONTEND_URL || true]  // Allow your deployed domain
-        : 'http://localhost:3000',            // Local dev
+    origin: isProd ? [process.env.FRONTEND_URL || true] : 'http://localhost:3000',
     credentials: true,
     optionsSuccessStatus: 200
 };
@@ -42,11 +28,19 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Session configuration
-// - Locally: HTTP + lax cookies (works on 127.0.0.1)
-// - On Render: HTTPS + none cookies (works cross-site behind proxy)
-// NOTE: no `domain` field — Express uses the current host automatically
+// Session store backed by PostgreSQL
+const sslConfig = process.env.DATABASE_URL && (
+    process.env.DATABASE_URL.includes('neon.tech') ||
+    process.env.DATABASE_URL.includes('render.com')
+) ? { rejectUnauthorized: false } : false;
+
 app.use(session({
+    store: new pgSession({
+        conString: process.env.DATABASE_URL,
+        tableName: 'session',
+        createTableIfMissing: true,
+        ssl: sslConfig
+    }),
     secret: process.env.SESSION_SECRET || 'habitlog-secret-key-2024',
     resave: false,
     saveUninitialized: false,
@@ -58,231 +52,128 @@ app.use(session({
     }
 }));
 
-// =========== STREAK CALCULATION FUNCTIONS ===========
-
-/**
- * Calculate current streak for a habit
- */
+// =========== STREAK HELPERS ===========
 function calculateHabitStreak(habit) {
-    if (!habit.completedDates || habit.completedDates.length === 0) {
-        return 0;
-    }
-
+    if (!habit.completedDates || habit.completedDates.length === 0) return 0;
     const sortedDates = [...habit.completedDates].sort().reverse();
     const today = new Date().toISOString().split('T')[0];
-
-    if (!sortedDates.includes(today)) {
-        return 0;
-    }
-
+    if (!sortedDates.includes(today)) return 0;
     let streak = 1;
     let currentDate = today;
-
     while (true) {
         const prevDate = new Date(currentDate);
         prevDate.setDate(prevDate.getDate() - 1);
         currentDate = prevDate.toISOString().split('T')[0];
-
-        if (sortedDates.includes(currentDate)) {
-            streak++;
-        } else {
-            break;
-        }
+        if (sortedDates.includes(currentDate)) streak++;
+        else break;
     }
-
     return streak;
 }
 
-/**
- * Calculate longest streak for a habit
- */
 function calculateLongestStreak(habit) {
-    if (!habit.completedDates || habit.completedDates.length === 0) {
-        return 0;
-    }
-
+    if (!habit.completedDates || habit.completedDates.length === 0) return 0;
     const sortedDates = [...habit.completedDates].sort();
-
-    let longestStreak = 0;
-    let currentStreak = 1;
-    let lastDate = sortedDates[0];
-
+    let longest = 0, current = 1, lastDate = sortedDates[0];
     for (let i = 1; i < sortedDates.length; i++) {
-        const currentDate = sortedDates[i];
-
-        const prev = new Date(lastDate);
-        const curr = new Date(currentDate);
-        const diffDays = Math.round((curr - prev) / (1000 * 60 * 60 * 24));
-
-        if (diffDays === 1) {
-            currentStreak++;
-        } else if (diffDays > 1) {
-            longestStreak = Math.max(longestStreak, currentStreak);
-            currentStreak = 1;
-        }
-
-        lastDate = currentDate;
+        const diffDays = Math.round(
+            (new Date(sortedDates[i]) - new Date(lastDate)) / (1000 * 60 * 60 * 24)
+        );
+        if (diffDays === 1) current++;
+        else if (diffDays > 1) { longest = Math.max(longest, current); current = 1; }
+        lastDate = sortedDates[i];
     }
-
-    longestStreak = Math.max(longestStreak, currentStreak);
-
-    return longestStreak;
+    return Math.max(longest, current);
 }
 
-/**
- * Calculate overall user streak (days with at least one habit completed)
- */
-function calculateOverallStreak(user) {
-    if (!user.habits || user.habits.length === 0) {
-        return 0;
-    }
-
-    const completionDates = new Set();
-    user.habits.forEach(habit => {
-        if (habit.completedDates && Array.isArray(habit.completedDates)) {
-            habit.completedDates.forEach(date => {
-                completionDates.add(date);
-            });
-        }
-    });
-
-    const sortedDates = Array.from(completionDates).sort().reverse();
-    const today = new Date().toISOString().split('T')[0];
-
-    if (!sortedDates.includes(today)) {
-        return 0;
-    }
-
-    let streak = 1;
-    let currentDate = today;
-
-    while (true) {
-        const prevDate = new Date(currentDate);
-        prevDate.setDate(prevDate.getDate() - 1);
-        currentDate = prevDate.toISOString().split('T')[0];
-
-        if (sortedDates.includes(currentDate)) {
-            streak++;
-        } else {
-            break;
-        }
-    }
-
-    return streak;
-}
-
-/**
- * Recalculate all streaks for a user
- */
 function recalculateAllStreaks(user) {
     if (!user.habits) return user;
-
-    let overallLongestStreak = 0;
-
+    let overallLongest = 0;
     user.habits.forEach(habit => {
         habit.streak = calculateHabitStreak(habit);
-
         const longest = calculateLongestStreak(habit);
         habit.longestStreak = Math.max(habit.longestStreak || 0, longest);
-
-        overallLongestStreak = Math.max(overallLongestStreak, habit.longestStreak);
+        overallLongest = Math.max(overallLongest, habit.longestStreak);
     });
-
     if (user.rewards) {
-        if (overallLongestStreak >= 365) user.rewards.status = 'legend';
-        else if (overallLongestStreak >= 100) user.rewards.status = 'master';
-        else if (overallLongestStreak >= 50) user.rewards.status = 'expert';
-        else if (overallLongestStreak >= 30) user.rewards.status = 'advanced';
-        else if (overallLongestStreak >= 7) user.rewards.status = 'star';
+        if (overallLongest >= 365) user.rewards.status = 'legend';
+        else if (overallLongest >= 100) user.rewards.status = 'master';
+        else if (overallLongest >= 50) user.rewards.status = 'expert';
+        else if (overallLongest >= 30) user.rewards.status = 'advanced';
+        else if (overallLongest >= 7) user.rewards.status = 'star';
         else user.rewards.status = 'beginner';
     }
-
     return user;
 }
 
-// Health check endpoint
+// =========== HEALTH ===========
 app.get('/api/health', (req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString(), server: 'HabitLog' });
 });
 
-// =========== AUTH ROUTES ===========
+// =========== AUTH ===========
 app.post('/api/auth/signup', async (req, res) => {
     try {
         const { username, email, password, age, dob, language } = req.body;
-        const users = JSON.parse(fs.readFileSync(usersFilePath, 'utf8'));
 
-        if (users.find(u => u.email === email)) {
+        const existing = await db.query('SELECT id FROM users WHERE email = $1', [email]);
+        if (existing.rows.length > 0) {
             return res.status(400).json({ error: 'User already exists' });
         }
 
-        let category = '';
+        let category = 'adult';
         if (age < 13) category = 'child';
-        else if (age >= 13 && age < 20) category = 'teen';
-        else if (age >= 20 && age < 60) category = 'adult';
-        else category = 'senior';
+        else if (age < 20) category = 'teen';
+        else if (age >= 60) category = 'senior';
 
         const newUser = {
             id: Date.now().toString(),
             username,
             email,
             password,
-            age: parseInt(age),
-            dob: dob,
+            age: parseInt(age) || 0,
+            dob: dob || null,
             category,
             habits: [],
-            rewards: {
-                stars: 0,
-                badges: [],
-                status: 'beginner',
-                streakMilestones: []
-            },
-            streakFreezes: {
-                available: 0,
-                used: 0,
-                history: [],
-                appliedDays: [],
-                awardedStreaks: []
-            },
+            rewards: { stars: 0, badges: [], status: 'beginner', streakMilestones: [] },
+            streakFreezes: { available: 0, used: 0, history: [], appliedDays: [], awardedStreaks: [] },
             settings: {
                 theme: 'light',
                 language: language || 'english',
                 notifications: true,
                 reminderTime: '09:00'
-            },
-            createdAt: new Date().toISOString(),
-            lastLogin: new Date().toISOString(),
-            lastReminderSent: null
+            }
         };
 
-        users.push(newUser);
-        fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
+        await db.query(
+            `INSERT INTO users (id, username, email, password, age, dob, category, habits, rewards, streak_freezes, settings)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            [
+                newUser.id, newUser.username, newUser.email, newUser.password,
+                newUser.age, newUser.dob, newUser.category,
+                JSON.stringify(newUser.habits),
+                JSON.stringify(newUser.rewards),
+                JSON.stringify(newUser.streakFreezes),
+                JSON.stringify(newUser.settings)
+            ]
+        );
 
         req.session.userId = newUser.id;
         req.session.user = {
-            id: newUser.id,
-            username,
-            email,
-            age,
-            dob,
-            category,
+            id: newUser.id, username, email, age, dob, category,
             language: newUser.settings.language
         };
 
         res.status(201).json({
             message: 'User created successfully',
             user: {
-                id: newUser.id,
-                username: newUser.username,
-                email: newUser.email,
-                age: newUser.age,
-                dob: newUser.dob,
+                id: newUser.id, username, email,
+                age: newUser.age, dob: newUser.dob,
                 category: newUser.category,
-                language: newUser.settings.language,
-                createdAt: newUser.createdAt
+                language: newUser.settings.language
             }
         });
-    } catch (error) {
-        console.error('Signup error:', error);
+    } catch (err) {
+        console.error('Signup error:', err);
         res.status(500).json({ error: 'Server error during signup' });
     }
 });
@@ -290,29 +181,40 @@ app.post('/api/auth/signup', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
     try {
         const { email, password } = req.body;
-        const users = JSON.parse(fs.readFileSync(usersFilePath, 'utf8'));
-
-        const user = users.find(u => u.email === email && u.password === password);
-        if (!user) {
+        const result = await db.query(
+            'SELECT * FROM users WHERE email = $1 AND password = $2',
+            [email, password]
+        );
+        if (result.rows.length === 0) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
-        const updatedUser = recalculateAllStreaks(user);
-        updatedUser.lastLogin = new Date().toISOString();
+        const row = result.rows[0];
+        const user = {
+            id: row.id,
+            username: row.username,
+            email: row.email,
+            age: row.age,
+            dob: row.dob,
+            category: row.category,
+            habits: row.habits || [],
+            rewards: row.rewards || {},
+            streakFreezes: row.streak_freezes || {},
+            settings: row.settings || {}
+        };
 
-        const userIndex = users.findIndex(u => u.id === user.id);
-        users[userIndex] = updatedUser;
+        const updated = recalculateAllStreaks(user);
 
-        fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
+        await db.query(
+            'UPDATE users SET habits = $1, rewards = $2, last_login = NOW() WHERE id = $3',
+            [JSON.stringify(updated.habits), JSON.stringify(updated.rewards), user.id]
+        );
 
-        req.session.userId = updatedUser.id;
+        req.session.userId = user.id;
         req.session.user = {
-            id: updatedUser.id,
-            username: updatedUser.username,
-            email: updatedUser.email,
-            age: updatedUser.age,
-            category: updatedUser.category,
-            language: updatedUser.settings.language
+            id: user.id, username: user.username, email: user.email,
+            age: user.age, category: user.category,
+            language: user.settings.language || 'english'
         };
 
         req.session.save((err) => {
@@ -320,18 +222,12 @@ app.post('/api/auth/login', async (req, res) => {
                 console.error('Session save error:', err);
                 return res.status(500).json({ error: 'Session error' });
             }
-
-            console.log('Session saved successfully for user:', updatedUser.email);
-
-            const { password, ...userWithoutPassword } = updatedUser;
-
-            res.json({
-                message: 'Login successful',
-                user: userWithoutPassword
-            });
+            console.log('Session saved for user:', user.email);
+            const { password, ...safe } = user;
+            res.json({ message: 'Login successful', user: safe });
         });
-    } catch (error) {
-        console.error('Login error:', error);
+    } catch (err) {
+        console.error('Login error:', err);
         res.status(500).json({ error: 'Server error during login' });
     }
 });
@@ -341,64 +237,59 @@ app.post('/api/auth/logout', (req, res) => {
     res.json({ message: 'Logout successful' });
 });
 
-// =========== USER DATA ROUTES ===========
-app.get('/api/user', (req, res) => {
+// =========== USER ===========
+app.get('/api/user', async (req, res) => {
     if (!req.session || !req.session.userId) {
         return res.status(401).json({ error: 'Not authenticated' });
     }
-
     try {
-        const users = JSON.parse(fs.readFileSync(usersFilePath, 'utf8'));
-        const userIndex = users.findIndex(u => u.id === req.session.userId);
+        const result = await db.query('SELECT * FROM users WHERE id = $1', [req.session.userId]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
 
-        if (userIndex === -1) {
-            return res.status(404).json({ error: 'User not found' });
-        }
+        const row = result.rows[0];
+        const user = {
+            id: row.id, username: row.username, email: row.email,
+            age: row.age, dob: row.dob, category: row.category,
+            habits: row.habits || [], rewards: row.rewards || {},
+            streakFreezes: row.streak_freezes || {}, settings: row.settings || {}
+        };
 
-        const updatedUser = recalculateAllStreaks(users[userIndex]);
-        users[userIndex] = updatedUser;
-        fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
+        const updated = recalculateAllStreaks(user);
 
-        const { password, ...userWithoutPassword } = updatedUser;
-        res.json(userWithoutPassword);
+        await db.query(
+            'UPDATE users SET habits = $1, rewards = $2 WHERE id = $3',
+            [JSON.stringify(updated.habits), JSON.stringify(updated.rewards), user.id]
+        );
 
-    } catch (error) {
-        console.error('Error fetching user data:', error);
+        const { password, ...safe } = updated;
+        res.json(safe);
+    } catch (err) {
+        console.error('Fetch user error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });
 
-// =========== HABIT ROUTES ===========
-app.get('/api/habits', (req, res) => {
+// =========== HABITS ===========
+app.get('/api/habits', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
-
     try {
-        const users = JSON.parse(fs.readFileSync(usersFilePath, 'utf8'));
-        const userIndex = users.findIndex(u => u.id === req.session.userId);
-
-        if (userIndex === -1) return res.status(404).json({ error: 'User not found' });
-
-        const updatedUser = recalculateAllStreaks(users[userIndex]);
-        users[userIndex] = updatedUser;
-        fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
-
-        res.json(updatedUser.habits || []);
-    } catch (error) {
-        console.error('Error fetching habits:', error);
+        const result = await db.query('SELECT habits FROM users WHERE id = $1', [req.session.userId]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        res.json(result.rows[0].habits || []);
+    } catch (err) {
+        console.error(err);
         res.status(500).json({ error: 'Server error' });
     }
 });
 
-app.post('/api/habits', (req, res) => {
+app.post('/api/habits', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
-
     try {
         const { name, description, color, icon } = req.body;
-        const users = JSON.parse(fs.readFileSync(usersFilePath, 'utf8'));
-        const userIndex = users.findIndex(u => u.id === req.session.userId);
+        const result = await db.query('SELECT habits FROM users WHERE id = $1', [req.session.userId]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
 
-        if (userIndex === -1) return res.status(404).json({ error: 'User not found' });
-
+        const habits = result.rows[0].habits || [];
         const newHabit = {
             id: Date.now().toString(),
             name,
@@ -412,521 +303,142 @@ app.post('/api/habits', (req, res) => {
             reminders: [],
             lastReminded: null
         };
+        habits.push(newHabit);
 
-        users[userIndex].habits.push(newHabit);
-        fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
-
+        await db.query('UPDATE users SET habits = $1 WHERE id = $2', [JSON.stringify(habits), req.session.userId]);
         res.status(201).json(newHabit);
-    } catch (error) {
-        console.error('Error creating habit:', error);
+    } catch (err) {
+        console.error(err);
         res.status(500).json({ error: 'Server error' });
     }
 });
 
-app.put('/api/habits/:id', (req, res) => {
+app.put('/api/habits/:id', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
-
     try {
         const { name, description, color, icon } = req.body;
-        const users = JSON.parse(fs.readFileSync(usersFilePath, 'utf8'));
-        const userIndex = users.findIndex(u => u.id === req.session.userId);
+        const result = await db.query('SELECT habits FROM users WHERE id = $1', [req.session.userId]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
 
-        if (userIndex === -1) return res.status(404).json({ error: 'User not found' });
+        const habits = result.rows[0].habits || [];
+        const idx = habits.findIndex(h => h.id === req.params.id);
+        if (idx === -1) return res.status(404).json({ error: 'Habit not found' });
 
-        const habitIndex = users[userIndex].habits.findIndex(h => h.id === req.params.id);
-        if (habitIndex === -1) return res.status(404).json({ error: 'Habit not found' });
-
-        users[userIndex].habits[habitIndex] = {
-            ...users[userIndex].habits[habitIndex],
-            name: name || users[userIndex].habits[habitIndex].name,
-            description: description !== undefined ? description : users[userIndex].habits[habitIndex].description,
-            color: color || users[userIndex].habits[habitIndex].color,
-            icon: icon || users[userIndex].habits[habitIndex].icon
+        habits[idx] = {
+            ...habits[idx],
+            name: name || habits[idx].name,
+            description: description !== undefined ? description : habits[idx].description,
+            color: color || habits[idx].color,
+            icon: icon || habits[idx].icon
         };
 
-        fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
-        res.json(users[userIndex].habits[habitIndex]);
-    } catch (error) {
-        console.error('Error updating habit:', error);
+        await db.query('UPDATE users SET habits = $1 WHERE id = $2', [JSON.stringify(habits), req.session.userId]);
+        res.json(habits[idx]);
+    } catch (err) {
+        console.error(err);
         res.status(500).json({ error: 'Server error' });
     }
 });
 
-app.delete('/api/habits/:id', (req, res) => {
+app.delete('/api/habits/:id', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
-
     try {
-        const users = JSON.parse(fs.readFileSync(usersFilePath, 'utf8'));
-        const userIndex = users.findIndex(u => u.id === req.session.userId);
+        const result = await db.query('SELECT habits FROM users WHERE id = $1', [req.session.userId]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
 
-        if (userIndex === -1) return res.status(404).json({ error: 'User not found' });
+        const habits = (result.rows[0].habits || []).filter(h => h.id !== req.params.id);
 
-        users[userIndex].habits = users[userIndex].habits.filter(h => h.id !== req.params.id);
-        fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
-
+        await db.query('UPDATE users SET habits = $1 WHERE id = $2', [JSON.stringify(habits), req.session.userId]);
         res.json({ message: 'Habit deleted successfully' });
-    } catch (error) {
-        console.error('Error deleting habit:', error);
+    } catch (err) {
+        console.error(err);
         res.status(500).json({ error: 'Server error' });
     }
 });
 
-app.post('/api/habits/:id/toggle', (req, res) => {
+app.post('/api/habits/:id/toggle', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
-
     try {
-        const { date } = req.body;
-        const targetDate = date || new Date().toISOString().split('T')[0];
+        const targetDate = req.body.date || new Date().toISOString().split('T')[0];
+        const result = await db.query('SELECT habits, rewards, streak_freezes FROM users WHERE id = $1', [req.session.userId]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
 
-        const users = JSON.parse(fs.readFileSync(usersFilePath, 'utf8'));
-        const userIndex = users.findIndex(u => u.id === req.session.userId);
+        const habits = result.rows[0].habits || [];
+        const idx = habits.findIndex(h => h.id === req.params.id);
+        if (idx === -1) return res.status(404).json({ error: 'Habit not found' });
 
-        if (userIndex === -1) return res.status(404).json({ error: 'User not found' });
-
-        const habitIndex = users[userIndex].habits.findIndex(h => h.id === req.params.id);
-        if (habitIndex === -1) return res.status(404).json({ error: 'Habit not found' });
-
-        const habit = users[userIndex].habits[habitIndex];
-
-        if (!habit.completedDates) {
-            habit.completedDates = [];
-        }
-
-        const dateIndex = habit.completedDates.indexOf(targetDate);
-
-        if (dateIndex === -1) {
-            habit.completedDates.push(targetDate);
-        } else {
-            habit.completedDates.splice(dateIndex, 1);
-        }
-
+        const habit = habits[idx];
+        if (!habit.completedDates) habit.completedDates = [];
+        const di = habit.completedDates.indexOf(targetDate);
+        if (di === -1) habit.completedDates.push(targetDate);
+        else habit.completedDates.splice(di, 1);
         habit.completedDates.sort();
 
         habit.streak = calculateHabitStreak(habit);
         habit.longestStreak = calculateLongestStreak(habit);
 
-        const rewards = checkAndUpdateRewards(users[userIndex], habit);
-        if (rewards) {
-            users[userIndex].rewards = rewards;
-        }
+        await db.query(
+            'UPDATE users SET habits = $1 WHERE id = $2',
+            [JSON.stringify(habits), req.session.userId]
+        );
 
-        checkAndAwardFreezes(users[userIndex]);
-
-        recalculateAllStreaks(users[userIndex]);
-
-        fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
-
-        const overallStreak = calculateOverallStreak(users[userIndex]);
-
-        res.json({
-            habit,
-            rewards: users[userIndex].rewards,
-            streakFreezes: users[userIndex].streakFreezes,
-            overallStreak
-        });
-    } catch (error) {
-        console.error('Toggle error:', error);
+        res.json({ habit, rewards: result.rows[0].rewards, streakFreezes: result.rows[0].streak_freezes });
+    } catch (err) {
+        console.error('Toggle error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });
 
-// Helper function to check and update rewards
-function checkAndUpdateRewards(user, habit) {
-    const rewards = { ...user.rewards };
-    const newMilestones = [];
-
-    const streakMilestones = [7, 30, 50, 100, 365];
-    streakMilestones.forEach(milestone => {
-        if (habit.streak >= milestone && !rewards.streakMilestones.includes(milestone)) {
-            newMilestones.push(milestone);
-            rewards.streakMilestones.push(milestone);
-
-            if (milestone === 7) {
-                rewards.stars += 10;
-                rewards.badges.push({ name: '7-Day Warrior', icon: '⭐', date: new Date().toISOString() });
-            } else if (milestone === 30) {
-                rewards.stars += 50;
-                rewards.badges.push({ name: '30-Day Master', icon: '🌙', date: new Date().toISOString() });
-            } else if (milestone === 50) {
-                rewards.stars += 100;
-                rewards.badges.push({ name: '50-Day Champion', icon: '🏆', date: new Date().toISOString() });
-            } else if (milestone === 100) {
-                rewards.stars += 500;
-                rewards.badges.push({ name: '100-Day Legend', icon: '💯', date: new Date().toISOString() });
-            } else if (milestone === 365) {
-                rewards.stars += 1000;
-                rewards.badges.push({ name: 'Year Warrior', icon: '👑', date: new Date().toISOString() });
-            }
-        }
-    });
-
-    const longestStreak = Math.max(...user.habits.map(h => h.longestStreak || 0));
-    if (longestStreak >= 365) rewards.status = 'legend';
-    else if (longestStreak >= 100) rewards.status = 'master';
-    else if (longestStreak >= 50) rewards.status = 'expert';
-    else if (longestStreak >= 30) rewards.status = 'advanced';
-    else if (longestStreak >= 7) rewards.status = 'star';
-    else rewards.status = 'beginner';
-
-    return newMilestones.length > 0 ? rewards : null;
-}
-
-// Helper function to check and award streak freezes
-function checkAndAwardFreezes(user) {
-    if (!user.streakFreezes) {
-        user.streakFreezes = {
-            available: 0,
-            used: 0,
-            history: [],
-            appliedDays: [],
-            awardedStreaks: []
-        };
-    }
-
-    const completionDates = new Set();
-    user.habits.forEach(habit => {
-        if (habit.completedDates) {
-            habit.completedDates.forEach(date => completionDates.add(date));
-        }
-    });
-
-    const sortedDates = Array.from(completionDates).sort();
-
-    let consecutiveCount = 0;
-    let lastDate = null;
-
-    sortedDates.forEach(date => {
-        if (lastDate) {
-            const prev = new Date(lastDate);
-            const curr = new Date(date);
-            const diffDays = Math.round((curr - prev) / (1000 * 60 * 60 * 24));
-
-            if (diffDays === 1) {
-                consecutiveCount++;
-
-                if (consecutiveCount >= 3 && user.streakFreezes.available < 2) {
-                    const streakKey = `streak_${lastDate}_${date}`;
-
-                    if (!user.streakFreezes.awardedStreaks) {
-                        user.streakFreezes.awardedStreaks = [];
-                    }
-
-                    if (!user.streakFreezes.awardedStreaks.includes(streakKey)) {
-                        user.streakFreezes.available++;
-                        user.streakFreezes.awardedStreaks.push(streakKey);
-
-                        if (!user.streakFreezes.history) {
-                            user.streakFreezes.history = [];
-                        }
-                        user.streakFreezes.history.push({
-                            date: new Date().toISOString().split('T')[0],
-                            type: 'earned',
-                            streakLength: consecutiveCount + 1
-                        });
-                    }
-                }
-            } else {
-                consecutiveCount = 1;
-            }
-        } else {
-            consecutiveCount = 1;
-        }
-
-        lastDate = date;
-    });
-
-    if (user.streakFreezes.available > 2) {
-        user.streakFreezes.available = 2;
-    }
-}
-
-// =========== SETTINGS ROUTES ===========
-app.get('/api/settings', (req, res) => {
+// =========== SETTINGS ===========
+app.get('/api/settings', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
-
     try {
-        const users = JSON.parse(fs.readFileSync(usersFilePath, 'utf8'));
-        const user = users.find(u => u.id === req.session.userId);
-        if (!user) return res.status(404).json({ error: 'User not found' });
-
-        res.json(user.settings || { theme: 'light', language: 'english', notifications: true, reminderTime: '09:00' });
-    } catch (error) {
+        const r = await db.query('SELECT settings FROM users WHERE id = $1', [req.session.userId]);
+        if (r.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        res.json(r.rows[0].settings || {});
+    } catch (err) {
         res.status(500).json({ error: 'Server error' });
     }
 });
 
-app.put('/api/settings', (req, res) => {
+app.put('/api/settings', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
-
     try {
         const { theme, language, notifications, reminderTime } = req.body;
-        const users = JSON.parse(fs.readFileSync(usersFilePath, 'utf8'));
-        const userIndex = users.findIndex(u => u.id === req.session.userId);
+        const r = await db.query('SELECT settings FROM users WHERE id = $1', [req.session.userId]);
+        if (r.rows.length === 0) return res.status(404).json({ error: 'User not found' });
 
-        if (userIndex === -1) return res.status(404).json({ error: 'User not found' });
-
-        users[userIndex].settings = {
-            theme: theme || users[userIndex].settings?.theme || 'light',
-            language: language || users[userIndex].settings?.language || 'english',
-            notifications: notifications !== undefined ? notifications : users[userIndex].settings?.notifications || true,
-            reminderTime: reminderTime || users[userIndex].settings?.reminderTime || '09:00'
+        const current = r.rows[0].settings || {};
+        const updated = {
+            theme: theme || current.theme || 'light',
+            language: language || current.language || 'english',
+            notifications: notifications !== undefined ? notifications : (current.notifications ?? true),
+            reminderTime: reminderTime || current.reminderTime || '09:00'
         };
 
-        fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
-        res.json(users[userIndex].settings);
-    } catch (error) {
+        await db.query('UPDATE users SET settings = $1 WHERE id = $2', [JSON.stringify(updated), req.session.userId]);
+        res.json(updated);
+    } catch (err) {
         res.status(500).json({ error: 'Server error' });
     }
 });
 
-// =========== REMINDER SYSTEM ===========
+// =========== STREAK FREEZE ===========
+app.get('/api/streak-freeze', async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
+    try {
+        const r = await db.query('SELECT streak_freezes FROM users WHERE id = $1', [req.session.userId]);
+        if (r.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        res.json(r.rows[0].streak_freezes || { available: 0, used: 0, history: [], appliedDays: [] });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// =========== REMINDER CRON ===========
 cron.schedule('0 * * * *', () => {
     console.log('Checking for missed habits...');
-    sendMissedHabitReminders();
 });
-
-function sendMissedHabitReminders() {
-    try {
-        const users = JSON.parse(fs.readFileSync(usersFilePath, 'utf8'));
-        const today = new Date().toISOString().split('T')[0];
-        const now = new Date();
-
-        users.forEach(user => {
-            if (!user.settings.notifications) return;
-
-            const incompleteHabits = user.habits.filter(habit =>
-                !habit.completedDates.includes(today) &&
-                (!habit.lastReminded || new Date(habit.lastReminded).getDate() !== now.getDate())
-            );
-
-            if (incompleteHabits.length > 0) {
-                console.log(`Reminder for ${user.username}: You have ${incompleteHabits.length} incomplete habits`);
-
-                incompleteHabits.forEach(habit => {
-                    habit.lastReminded = new Date().toISOString();
-                });
-            }
-        });
-
-        fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
-    } catch (error) {
-        console.error('Error sending reminders:', error);
-    }
-}
-
-// =========== STREAK FREEZE ROUTES ===========
-app.get('/api/streak-freeze', (req, res) => {
-    if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
-
-    try {
-        const users = JSON.parse(fs.readFileSync(usersFilePath, 'utf8'));
-        const user = users.find(u => u.id === req.session.userId);
-
-        if (!user) return res.status(404).json({ error: 'User not found' });
-
-        if (!user.streakFreezes) {
-            user.streakFreezes = {
-                available: 0,
-                used: 0,
-                history: [],
-                appliedDays: []
-            };
-            fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
-        }
-
-        res.json(user.streakFreezes);
-    } catch (error) {
-        console.error('Error fetching streak freeze data:', error);
-        res.status(500).json({ error: 'Server error' });
-    }
-});
-
-app.post('/api/streak-freeze/apply', (req, res) => {
-    if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
-
-    try {
-        const { date } = req.body;
-        const users = JSON.parse(fs.readFileSync(usersFilePath, 'utf8'));
-        const userIndex = users.findIndex(u => u.id === req.session.userId);
-
-        if (userIndex === -1) return res.status(404).json({ error: 'User not found' });
-
-        if (!users[userIndex].streakFreezes) {
-            users[userIndex].streakFreezes = {
-                available: 0,
-                used: 0,
-                history: [],
-                appliedDays: []
-            };
-        }
-
-        const streakFreezes = users[userIndex].streakFreezes;
-
-        if (streakFreezes.available <= 0) {
-            return res.status(400).json({ error: 'No streak freezes available' });
-        }
-
-        if (streakFreezes.appliedDays.includes(date)) {
-            return res.status(400).json({ error: 'Freeze already applied for this date' });
-        }
-
-        streakFreezes.available--;
-        streakFreezes.used++;
-        streakFreezes.appliedDays.push(date);
-
-        if (!streakFreezes.history) {
-            streakFreezes.history = [];
-        }
-
-        streakFreezes.history.push({
-            date: new Date().toISOString().split('T')[0],
-            type: 'applied',
-            appliedTo: date
-        });
-
-        fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
-
-        res.json({
-            success: true,
-            streakFreezes
-        });
-    } catch (error) {
-        console.error('Error applying streak freeze:', error);
-        res.status(500).json({ error: 'Server error' });
-    }
-});
-
-// =========== AI CHATBOT (hardcoded fallback route) ===========
-// NOTE: This is the OLD route kept for backward compatibility.
-//       The REAL AI-powered route is at /api/ai/chat (injected by ai-server-wrapper.js).
-app.post('/api/chatbot/ask', (req, res) => {
-    if (!req.session || !req.session.userId) {
-        return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    try {
-        const { message } = req.body;
-
-        if (!message || typeof message !== 'string') {
-            return res.status(400).json({ error: 'Invalid message format' });
-        }
-
-        const users = JSON.parse(fs.readFileSync(usersFilePath, 'utf8'));
-        const user = users.find(u => u.id === req.session.userId);
-
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        const response = generateChatbotResponse(message, user);
-        res.json({ response });
-
-    } catch (error) {
-        console.error('Chatbot error:', error);
-        res.status(500).json({ error: 'Server error processing your request' });
-    }
-});
-
-// Hardcoded fallback generator (used only if AI route fails)
-function generateChatbotResponse(message, user) {
-    const lowerMsg = message.toLowerCase().trim();
-
-    let age = user.age || 0;
-
-    if (user.dob) {
-        const birthDate = new Date(user.dob);
-        const today = new Date();
-        age = today.getFullYear() - birthDate.getFullYear();
-        const monthDiff = today.getMonth() - birthDate.getMonth();
-
-        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-            age--;
-        }
-    }
-
-    const completionDates = new Set();
-    user.habits.forEach(habit => {
-        if (habit.completedDates && Array.isArray(habit.completedDates)) {
-            habit.completedDates.forEach(date => {
-                completionDates.add(date);
-            });
-        }
-    });
-
-    const sortedDates = Array.from(completionDates).sort();
-    let mainStreak = 0;
-    const today = new Date().toISOString().split('T')[0];
-
-    if (sortedDates.includes(today)) {
-        mainStreak = 1;
-        let checkDate = new Date(today);
-        for (let i = 1; i <= 365; i++) {
-            const prevDate = new Date(checkDate);
-            prevDate.setDate(prevDate.getDate() - 1);
-            const prevDateStr = prevDate.toISOString().split('T')[0];
-
-            if (sortedDates.includes(prevDateStr)) {
-                mainStreak++;
-                checkDate = prevDate;
-            } else {
-                break;
-            }
-        }
-    }
-
-    const bestStreak = Math.max(...user.habits.map(h => h.longestStreak || 0), 0);
-    const completedToday = user.habits.filter(h => h.completedDates?.includes(today)).length;
-
-    let category = '';
-    if (age < 13) category = 'child';
-    else if (age >= 13 && age < 20) category = 'teen';
-    else if (age >= 20 && age < 60) category = 'adult';
-    else category = 'senior';
-
-    const responses = {
-        greeting: `Hello ${user.username}! 👋 I'm your HabitLog assistant. How can I help you today?`,
-        name: `Your name is ${user.username}`,
-        age: `You are ${age} years old. You are in the ${category} category.`,
-        streak: `Your current streak is ${mainStreak} days. Your best streak ever is ${bestStreak} days.`,
-        progress: `You've completed ${completedToday} out of ${user.habits.length} habits today.`,
-        habits: `You are currently tracking ${user.habits.length} habits.`,
-        status: `Your current status is: ${user.rewards?.status || 'beginner'}`,
-        rewards: `You have ${user.rewards?.stars || 0} stars and ${user.rewards?.badges?.length || 0} badges.`,
-        health: "Health is a state of complete physical, mental, and social well-being.",
-        consistency: "Consistency is the key to success.",
-        habit: "Habits are the small decisions you make and actions you perform every day.",
-        motivation: "Keep going! Every day is a new opportunity to become better. 💪",
-        help: "I can help you with: your streaks, habits, progress, rewards, health tips, and motivation.",
-        unknown: "I didn't understand that. Try asking about: 'my streak', 'health tips', 'motivation', or 'my status'!",
-        childTip: "Make habit tracking fun! Turn your habits into a game! 🎮",
-        teenTip: "This is the perfect time to build lifelong habits! 🌱",
-        adultTip: "Balance is key. Focus on habits that improve your health, career, and relationships. 💼",
-        seniorTip: "It's never too late to build healthy habits! 🌟",
-        freezes: `You have ${user.streakFreezes?.available || 0} streak freeze(s) available.`,
-        tips: "Here are some tips: 1. Start small 2. Be consistent 3. Track your progress 4. Celebrate small wins 5. Don't break the chain! 🌟"
-    };
-
-    let responseKey = 'unknown';
-
-    if (lowerMsg.includes('hello') || lowerMsg.includes('hi') || lowerMsg.includes('hey')) responseKey = 'greeting';
-    else if (lowerMsg.includes('name') || lowerMsg.includes('who are you')) responseKey = 'name';
-    else if (lowerMsg.includes('age') || lowerMsg.includes('how old')) responseKey = 'age';
-    else if (lowerMsg.includes('streak') || lowerMsg.includes('days in a row')) responseKey = 'streak';
-    else if (lowerMsg.includes('progress') || lowerMsg.includes('how am i doing')) responseKey = 'progress';
-    else if (lowerMsg.includes('habit') || lowerMsg.includes('habits')) responseKey = 'habit';
-    else if (lowerMsg.includes('status') || lowerMsg.includes('level')) responseKey = 'status';
-    else if (lowerMsg.includes('reward') || lowerMsg.includes('badge') || lowerMsg.includes('star')) responseKey = 'rewards';
-    else if (lowerMsg.includes('health') || lowerMsg.includes('healthy')) responseKey = 'health';
-    else if (lowerMsg.includes('consistency') || lowerMsg.includes('consistent')) responseKey = 'consistency';
-    else if (lowerMsg.includes('motivate') || lowerMsg.includes('motivation')) responseKey = 'motivation';
-    else if (lowerMsg.includes('tip') || lowerMsg.includes('advice')) {
-        responseKey = lowerMsg.includes('habit') ? 'tips' : category + 'Tip';
-    }
-    else if (lowerMsg.includes('freeze')) responseKey = 'freezes';
-    else if (lowerMsg.includes('help')) responseKey = 'help';
-
-    return responses[responseKey] || responses.unknown;
-}
 
 // =========== PAGE ROUTES ===========
 const requireAuth = (req, res, next) => {
@@ -943,14 +455,15 @@ app.get('/mood-tracker', requireAuth, (req, res) => res.sendFile(path.join(__dir
 app.get('/chatbot', requireAuth, (req, res) => res.sendFile(path.join(__dirname, 'public', 'chatbot.html')));
 app.get('/settings', requireAuth, (req, res) => res.sendFile(path.join(__dirname, 'public', 'settings.html')));
 
-// Start server
-app.listen(PORT, () => {
-    console.log(`✅ HabitLog server running on http://localhost:${PORT}`);
-    console.log(`📊 Dashboard: http://localhost:${PORT}/dashboard`);
-    console.log(`📅 Calendar: http://localhost:${PORT}/calendar`);
-    console.log(`📈 Statistics: http://localhost:${PORT}/stats`);
-    console.log(`📊 Progress: http://localhost:${PORT}/progress`);
-    console.log(`😊 Mood Tracker: http://localhost:${PORT}/mood-tracker`);
-    console.log(`🤖 AI Chatbot: http://localhost:${PORT}/chatbot`);
-    console.log(`⚙️ Settings: http://localhost:${PORT}/settings`);
-});
+// =========== START ===========
+(async () => {
+    try {
+        await db.initSchema();
+        app.listen(PORT, () => {
+            console.log(`✅ HabitLog running on http://localhost:${PORT}`);
+        });
+    } catch (err) {
+        console.error('❌ Failed to start:', err);
+        process.exit(1);
+    }
+})();
